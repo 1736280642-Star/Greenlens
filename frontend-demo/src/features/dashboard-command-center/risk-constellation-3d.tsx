@@ -132,7 +132,7 @@ function ConstellationScene({ nodes, selectedFactor, selectedCompanyId, onHover,
     const vertices: number[] = [];
     nodes.forEach((node, nodeIndex) => {
       const base = positions[nodeIndex];
-      const available = node.history.filter((point) => point.finalIndex != null);
+      const available = (node.history ?? []).filter((point) => point.finalIndex != null);
       for (let index = 1; index < available.length; index += 1) {
         const previous = available[index - 1];
         const current = available[index];

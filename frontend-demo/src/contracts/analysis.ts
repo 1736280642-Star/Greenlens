@@ -48,7 +48,8 @@ const scoreInputSchema = z.object({
 const penaltyTermSchema = z.object({
   inputValue: z.number().min(0).max(1).nullable(),
   weight: z.number().nonnegative(),
-  contribution: z.number().nonnegative().nullable(),
+  /** Risk contribution. Penalties are non-negative; positive adjustments (e.g. evidence) are negative. */
+  contribution: z.number().nullable(),
 });
 
 const panelMetadataSchema = z.object({
@@ -101,6 +102,7 @@ export const companyYearRecordSchema = z.object({
   riskBand: riskBandSchema,
   evidenceCoverage: z.number().min(0).max(100),
   evidenceStatus: evidenceStatusSchema,
+  evidenceLinkageStatus: z.enum(["linked", "unlinked", "parse_failed", "low_coverage"]).optional(),
   reviewStatus: reviewStatusSchema,
   eventCount: z.number().int().nonnegative(),
   textProcessing: z.object({
@@ -147,6 +149,7 @@ export const companyYearRecordSchema = z.object({
     actionPenalty: penaltyTermSchema,
     indeterminatePenalty: penaltyTermSchema,
     planningPenalty: penaltyTermSchema,
+    evidenceAdjustment: penaltyTermSchema,
     finalRaw: z.number().nullable(),
     finalNormalized: z.number().min(0).max(1).nullable(),
     normalizationVersion: z.string().min(1),
@@ -249,8 +252,46 @@ export const evidenceItemSchema = z.object({
   sourceLabel: z.string(), sourceUrl: z.string().optional(), status: evidenceStatusSchema,
 });
 
+export const esgRatingRecordSchema = z.object({
+  id: z.string(),
+  companyId: z.string(),
+  vendor: z.string(),
+  stockCode: z.string(),
+  companyName: z.string(),
+  reportYear: z.number().int(),
+  rating: z.string(),
+  score: z.number().nullable(),
+  eScore: z.number().nullable(),
+  sScore: z.number().nullable(),
+  gScore: z.number().nullable(),
+  scoreScale: z.string(),
+  sourceFile: z.string(),
+  ingestedAt: z.string().datetime({ offset: true }),
+});
+
 const dashboardRiskHistoryPointSchema = z.object({
   year: z.number().int(), finalIndex: z.number().min(0).max(1).nullable(), riskBand: riskBandSchema,
+});
+
+const indexBreakdownSchema = z.object({
+  baseEsgsiNormalized: z.number().min(0).max(1).nullable(),
+  actionPenalty: penaltyTermSchema,
+  indeterminatePenalty: penaltyTermSchema,
+  planningPenalty: penaltyTermSchema,
+  evidenceAdjustment: penaltyTermSchema,
+  finalRaw: z.number().nullable(),
+  finalNormalized: z.number().min(0).max(1).nullable(),
+  normalizationVersion: z.string().min(1),
+  normalizationScope: normalizationScopeSchema,
+});
+
+const dashboardCohortBreakdownSchema = z.object({
+  baseEsgsi: z.number().min(0).max(1).nullable(),
+  actionPenalty: z.number().nullable(),
+  indeterminatePenalty: z.number().nullable(),
+  planningPenalty: z.number().nullable(),
+  evidenceAdjustment: z.number().nullable(),
+  final: z.number().min(0).max(1).nullable(),
 });
 
 const dashboardRiskNodeSchema = z.object({
@@ -263,19 +304,23 @@ const dashboardRiskNodeSchema = z.object({
     IR: z.number().min(0).max(1).nullable(), UPR: z.number().min(0).max(1).nullable(),
     EAA_ESGSI: z.number().min(0).max(1).nullable(),
   }),
-  persistentHighRiskYears: z.number().int().nonnegative(), history: z.array(dashboardRiskHistoryPointSchema),
+  persistentHighRiskYears: z.number().int().nonnegative(),
+  indexBreakdown: indexBreakdownSchema,
+  history: z.array(dashboardRiskHistoryPointSchema).optional(),
 });
 
 export const dashboardCommandCenterSchema = z.object({
   scope: z.object({
-    reportYear: z.number().int(), industry: z.string().optional(),
+    reportYear: z.number().int(), availableReportYears: z.array(z.number().int()), industry: z.string().optional(),
     sampleGroup: z.enum(["main_n_ge_20", "robustness_n_10_19", "low_n_lt_10"]).optional(),
     dataVersion: z.string().min(1), computedAt: z.string().datetime({ offset: true }),
   }),
   kpis: z.object({
     sampleCount: z.number().int().nonnegative(), highRiskCount: z.number().int().nonnegative(),
     persistentHighRiskCount: z.number().int().nonnegative(), medianFinalIndex: z.number().min(0).max(1).nullable(),
-    insufficientEvidenceCount: z.number().int().nonnegative(), qualityAlertCount: z.number().int().nonnegative(),
+    insufficientEvidenceCount: z.number().int().nonnegative(),
+    unlinkedEvidenceCount: z.number().int().nonnegative(), evidenceParseFailedCount: z.number().int().nonnegative(),
+    lowEvidenceCoverageCount: z.number().int().nonnegative(), qualityAlertCount: z.number().int().nonnegative(),
   }),
   metricTriad: z.array(z.object({
     code: z.enum(["RHETORIC_CONTENT", "ACTION_SUBSTANCE", "AMBIGUITY_VERIFICATION"]),
@@ -300,6 +345,7 @@ export const dashboardCommandCenterSchema = z.object({
     code: z.enum(["HIGH_ESGSI", "LOW_EASS", "HIGH_IR", "HIGH_UPR"]), count: z.number().int().nonnegative(),
   })),
   quality: z.array(panelYearSummarySchema),
+  medianBreakdown: dashboardCohortBreakdownSchema,
 });
 
 export const dashboardInsightsSchema = z.object({
@@ -321,8 +367,52 @@ export const reviewRecordSchema = z.object({
   reasonCode: z.string().optional(), note: z.string().optional(), reviewedAt: z.string().datetime({ offset: true }).optional(),
 });
 
+export const evidencePageReferenceSchema = z.object({
+  evidenceId: z.string(),
+  companyId: z.string(),
+  reportYear: z.number().int(),
+  documentId: z.string(),
+  sourceLabel: z.string(),
+  page: z.number().int().positive(),
+  pageCount: z.number().int().positive(),
+  text: z.string(),
+});
+
 export const analysisJobSchema = z.object({
   jobId: z.string(), reportId: z.string(), status: z.enum(["queued", "running", "completed", "failed"]),
   phase: z.enum(["collect", "preprocess", "extract", "classify", "calculate", "risk"]), progress: z.number().min(0).max(100),
   resultCompanyId: z.string().optional(), error: z.object({ cause: z.string(), impact: z.string(), nextAction: z.string() }).optional(),
+});
+
+const sourceFileKindSchema = z.enum(["esg_report", "financial_workbook", "violation_workbook", "company_score_workbook", "company_industry_workbook", "esg_rating_workbook", "negative_news", "archive", "unknown"]);
+const sourceFileParseStatusSchema = z.enum(["discovered", "schema_pending", "ready", "unsupported", "failed"]);
+
+export const sourceFileRecordSchema = z.object({
+  id: z.string(), provider: z.literal("baidu_netdisk"), path: z.string().min(1), filename: z.string().min(1),
+  fsid: z.string().min(1), md5: z.string().optional(), size: z.number().int().nonnegative(), kind: sourceFileKindSchema,
+  parseStatus: sourceFileParseStatusSchema, discoveredAt: z.string().datetime({ offset: true }), modifiedAt: z.string().datetime({ offset: true }).optional(),
+  detectedFields: z.array(z.string()), qualityFlags: z.array(z.string()),
+});
+
+export const sourceFieldCatalogSchema = z.object({
+  sourceFileId: z.string(), sheetName: z.string().optional(),
+  fields: z.array(z.object({
+    sourceField: z.string().min(1), targetField: z.string().optional(),
+    dataType: z.enum(["string", "number", "date", "boolean", "unknown"]), required: z.boolean(),
+    status: z.enum(["mapped", "unmapped", "invalid"]),
+  })),
+});
+
+export const dataSourceStatusSchema = z.object({
+  provider: z.literal("baidu_netdisk"), rootPath: z.string().min(1),
+  connectionStatus: z.enum(["connected", "degraded", "unavailable"]), lastSyncedAt: z.string().datetime({ offset: true }).optional(),
+  fileCount: z.number().int().nonnegative(), readyFileCount: z.number().int().nonnegative(), schemaPendingFileCount: z.number().int().nonnegative(),
+  message: z.string().optional(),
+});
+
+export const dataSourceSyncJobSchema = z.object({
+  jobId: z.string(), provider: z.literal("baidu_netdisk"), status: z.enum(["queued", "running", "completed", "failed"]),
+  phase: z.enum(["discover", "inspect_schema", "extract", "normalize", "index"]), progress: z.number().min(0).max(100),
+  discoveredFileCount: z.number().int().nonnegative(), readyFileCount: z.number().int().nonnegative(),
+  error: z.object({ cause: z.string(), impact: z.string(), nextAction: z.string() }).optional(),
 });

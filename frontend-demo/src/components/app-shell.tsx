@@ -7,6 +7,7 @@ import {
   Building2,
   ChartNoAxesCombined,
   Command,
+  Database,
   FileSearch,
   FlaskConical,
   GitCompareArrows,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useDemoStore } from "@/stores/demo-store";
+import { analysisRepositoryMode } from "@/repositories";
 import { GlobalLayers } from "@/components/global-layers";
 
 const nav = [
@@ -29,6 +31,7 @@ const nav = [
   { href: "/compare", label: "对比", caption: "Compare", icon: GitCompareArrows },
   { href: "/reports", label: "报告检测", caption: "Reports", icon: FileSearch },
   { href: "/review", label: "复核", caption: "Review", icon: FlaskConical },
+  { href: "/data-sources", label: "数据源", caption: "Sources", icon: Database },
   { href: "/methodology", label: "方法", caption: "Methodology", icon: Command },
 ];
 
@@ -38,6 +41,7 @@ const pageTitles: Record<string, string> = {
   compare: "对比分析",
   reports: "报告检测",
   review: "复核中心",
+  "data-sources": "数据源",
   methodology: "方法与模型",
 };
 
@@ -61,11 +65,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const [industries, setIndustries] = useState<string[]>([]);
+  const [years, setYears] = useState<number[]>([]);
   const filtersReady = useSyncExternalStore(
     subscribeToStoreHydration,
     getStoreHydrationSnapshot,
     () => false,
   );
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch("/api/v1/industries", { cache: "no-store" }),
+      fetch("/api/v1/panel/year-summaries", { cache: "no-store" }),
+    ])
+      .then(([industriesResponse, yearsResponse]) => Promise.all([industriesResponse.json(), yearsResponse.json()]))
+      .then(([industryPayload, yearPayload]: [{ industries?: string[] }, Array<{ year: number }>]) => {
+        if (!active) return;
+        setIndustries(industryPayload.industries ?? []);
+        setYears([...new Set(yearPayload.map((item) => item.year))].filter((item) => item >= 2016).sort((a, b) => b - a));
+      })
+      .catch(() => { if (active) setIndustries([]); });
+    return () => { active = false; };
+  }, []);
   const { year, industry, risk, setFilters, openDrawer, notifications, reset, showToast } = useDemoStore();
   const root = pathname.split("/")[1] || "dashboard";
   const title = root === "companies" && pathname.split("/").length > 2 ? "企业分析" : pageTitles[root];
@@ -85,7 +106,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   function resetDemo() {
     reset();
-    showToast("演示数据已恢复默认状态");
+    showToast("筛选与工作区状态已重置");
     router.push("/dashboard");
   }
 
@@ -118,9 +139,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="sidebar-footer">
-          {!collapsed && <div className="data-version"><span>数据版本</span><code>SYN-2026.08</code><small>全量合成数据</small></div>}
-          <button className="sidebar-action" onClick={resetDemo} title="重置演示数据">
-            <RotateCcw size={16} />{!collapsed && <span>重置演示数据</span>}
+          {!collapsed && <div className="data-version"><span>数据版本</span><code>NETDISK-SQLITE-1</code><small>只读后端接入</small></div>}
+          <button className="sidebar-action" onClick={resetDemo} title="重置筛选与工作区">
+            <RotateCcw size={16} />{!collapsed && <span>重置筛选</span>}
           </button>
           <button className="sidebar-action" onClick={() => setCollapsed(!collapsed)} title={collapsed ? "展开侧栏" : "折叠侧栏"}>
             {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}{!collapsed && <span>折叠侧栏</span>}
@@ -129,14 +150,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="workspace">
-        <header className="topbar">
-          <div className="topbar-title">
+        <header className={`topbar ${root === "dashboard" ? "dashboard-topbar" : ""}`}>
+          <div className={`topbar-title ${root === "dashboard" ? "dashboard-identity" : ""}`}>
             <button className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航" title="打开导航"><Menu /></button>
-            <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>
+            {root === "dashboard"
+              ? <div><h1>GreenLens</h1><span className="topbar-subtitle">风险分析终端 · 风险总览</span></div>
+              : <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>}
           </div>
           <div className="topbar-actions">
             <button className="command-trigger" onClick={() => openDrawer("command")}><Search size={16} /><span>搜索公司、页面或动作</span><kbd>Ctrl K</kbd></button>
-            <span className="demo-badge" title="企业、事件、报告与指标均为合成内容">DEMO DATA</span>
+            <span className="demo-badge" title={analysisRepositoryMode === "http" ? "数据来自只读网盘接入与 SQLite 聚合" : "当前使用可重复验收的合成数据"}>{analysisRepositoryMode === "http" ? "LIVE DATA" : "SYNTHETIC"}</span>
             <button className="icon-button" onClick={() => openDrawer("ai")} aria-label="打开 AI 证据助手" title="AI 证据助手"><Sparkles /></button>
             <button className="icon-button notification-button" onClick={() => openDrawer("notifications")} aria-label="打开通知" title="通知">
               <Bell /><span>{notifications.length}</span>
@@ -144,16 +167,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {root !== "dashboard" && <div className="context-bar" aria-label="全局筛选" aria-busy={!filtersReady}>
-          <label><span>报告年</span><select disabled={!filtersReady} value={year} onChange={(event) => setFilters({ year: Number(event.target.value) })}><option>2025</option><option>2024</option><option>2023</option></select></label>
-          <label><span>行业</span><select disabled={!filtersReady} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option><option>新材料</option><option>综合能源</option><option>交通设备</option><option>消费品</option><option>电子制造</option><option>建筑</option></select></label>
+        {root !== "dashboard" && root !== "data-sources" && <div className="context-bar" aria-label="全局筛选" aria-busy={!filtersReady}>
+          <label><span>报告年</span><select disabled={!filtersReady} value={year} onChange={(event) => setFilters({ year: Number(event.target.value) })}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>行业</span><select disabled={!filtersReady} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>风险</span><select disabled={!filtersReady} value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
-          {(industry !== "全部行业" || risk !== "全部风险" || year !== 2025) && <button className="text-button" disabled={!filtersReady} onClick={() => setFilters({ year: 2025, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
-          <span className="context-count">合成样本 · 口径截至 {year}</span>
+          {(industry !== "全部行业" || risk !== "全部风险" || year !== 2024) && <button className="text-button" disabled={!filtersReady} onClick={() => setFilters({ year: 2024, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
+          <span className="context-count">后端样本 · 口径截至 {year}</span>
         </div>}
 
         <main className={`main-content ${root === "dashboard" || pathname.includes("/companies/") ? "evidence-grid-bg" : ""}`}>{children}</main>
-        <div className="global-demo-notice">演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。</div>
+        <div className="global-demo-notice">只读接入数据：风险指标仅作为待复核信号；PDF 原文不下发浏览器。</div>
       </div>
       <button className={`mobile-scrim ${mobileNav ? "visible" : ""}`} onClick={() => setMobileNav(false)} aria-label="关闭导航遮罩" />
       <GlobalLayers />

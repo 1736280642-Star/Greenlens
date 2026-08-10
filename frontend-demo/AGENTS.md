@@ -8,7 +8,7 @@ These rules apply to the entire `frontend-demo` project.
 
 - Follow `../../docs/frontend_demo_design_spec.md` as the authoritative product and UX specification.
 - For `/dashboard`, follow `docs/dashboard-product-requirements-v2.md` when it is more specific than the general design specification.
-- Use only synthetic companies, events, reports, ratings, and metrics.
+- Production-like local runs use normalized backend records through `src/repositories`; deterministic tests explicitly use synthetic fixtures.
 - Always present risk as a signal requiring review, never as a confirmed greenwashing judgment.
 - Keep the complete desktop investigation workflow and a deliberately reduced mobile workflow.
 
@@ -18,7 +18,7 @@ These rules apply to the entire `frontend-demo` project.
 - Shared filters, selected evidence, comparisons, reviews, and notifications live in the demo store.
 - URL query parameters preserve year, tab, company, and evidence state where applicable.
 - Every command must give visible feedback. Errors state cause, impact, and the next action.
-- Do not add secrets, private links, real company data, or real document text.
+- Do not commit secrets, private links, raw real-company datasets, or real document text. Real records stay behind the read-only Repository/API boundary.
 
 ## Quality Gates
 

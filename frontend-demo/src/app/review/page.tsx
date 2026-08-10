@@ -40,7 +40,7 @@ export default function ReviewPage() {
   const [undoId, setUndoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { pendingReviews, saveReview, undoReview, reviews, showToast } = useDemoStore();
+  const { pendingReviews, setPendingReviews, saveReview, undoReview, reviews, showToast } = useDemoStore();
   const visible = useMemo(() => tab === "all" ? queue : queue.filter((item) => item.reviewType === tab), [queue, tab]);
   const current = visible[index % Math.max(1, visible.length)] ?? queue[0];
   const company = companies.find((item) => item.companyId === current?.companyId);
@@ -64,12 +64,13 @@ export default function ReviewPage() {
         });
         setCompanies(companyItems);
         setQueue(scopedQueue);
+        setPendingReviews(scopedQueue.length);
         if (industry || risk || factor) setTab("all");
       })
       .catch((reason: Error) => active && setError(reason.message))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [setPendingReviews]);
 
   useEffect(() => {
     if (!current) return;
@@ -125,7 +126,7 @@ export default function ReviewPage() {
       <section className="review-queue"><header><span>待处理任务</span><small>{visible.length} 条</small></header>{visible.length ? visible.map((task, taskIndex) => { const recordCompany = companies.find((entry) => entry.companyId === task.companyId); return <button className={taskIndex === index ? "selected" : ""} onClick={() => setIndex(taskIndex)} key={task.id}><div><strong>{recordCompany?.companyName ?? task.companyId}</strong><span className="status-chip">{task.metricCode.replace("EAA_ESGSI", "E-AA-ESGSI")}</span></div><p>{task.reason}</p><small><Clock3 size={12}/>{ageLabel(task.ageHours)}<code>影响 {task.impact}</code><ChevronRight size={14}/></small></button>; }) : <div className="queue-empty">当前类型没有待复核任务</div>}</section>
       <section className="review-decision">
         <header><div><span className="section-kicker">{reviewTypes.find((type) => type.key === current.reviewType)?.label} · {current.metricCode.replace("EAA_ESGSI", "E-AA-ESGSI")}</span><h3>{item?.title ?? current.reason}</h3><p>{company.companyName} · {company.reportYear} · 影响优先级 {current.impact}</p></div><span className="status-chip pending">待复核</span></header>
-        <div className="review-evidence"><span>模型判断</span><strong>{current.reason}</strong><blockquote>{item?.excerpt ?? "当前为合成复核任务。真实接入后由后端返回对应证据原文与定位信息。"}</blockquote><small>{item ? `${item.sourceLabel} · ${item.page ? `第 ${item.page} 页` : "外部记录"}` : `证据 ID ${current.evidenceId}`}</small><dl className="review-metric-contract"><div><dt>原始值</dt><dd>{Math.round(current.metricValue * 100)}%</dd></div><div><dt>阈值</dt><dd>{Math.round(current.threshold * 100)}%</dd></div><div><dt>分子 / 分母</dt><dd>{metric?.numerator ?? "--"} / {metric?.denominator ?? "--"}</dd></div><div><dt>公式版本</dt><dd>{metric?.formulaVersion ?? company.versions.score}</dd></div></dl></div>
+        <div className="review-evidence"><span>模型判断</span><strong>{current.reason}</strong><blockquote>{item?.excerpt ?? "后端未返回该证据的定位信息，请回企业分析页核对证据链。"}</blockquote><small>{item ? `${item.sourceLabel} · ${item.page ? `第 ${item.page} 页` : "外部记录"}` : `证据 ID ${current.evidenceId}`}</small><dl className="review-metric-contract"><div><dt>原始值</dt><dd>{Math.round(current.metricValue * 100)}%</dd></div><div><dt>阈值</dt><dd>{Math.round(current.threshold * 100)}%</dd></div><div><dt>分子 / 分母</dt><dd>{metric?.numerator ?? "--"} / {metric?.denominator ?? "--"}</dd></div><div><dt>公式版本</dt><dd>{metric?.formulaVersion ?? company.versions.score}</dd></div></dl></div>
         <div className="decision-form"><fieldset><legend>人工决定</legend>{[["confirm","确认"],["reject","驳回"],["partial","部分相关"],["insufficient","证据不足"]].map(([value,label]) => <label className={decision === value ? "selected" : ""} key={value}><input type="radio" checked={decision === value} onChange={() => setDecision(value)}/><span>{label}</span></label>)}</fieldset><label className="field-label"><span>原因与备注</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="记录判断依据，便于后续追溯"/></label></div>
         <footer><button className="quiet-button" onClick={() => { setSkipped((value) => value + 1); setIndex((value) => value + 1); }}><SkipForward size={15}/>跳过</button><div><button className="secondary-button" onClick={() => save(false)}>保存</button><button className="primary-button" onClick={() => save(true)}>保存并下一条 <ChevronRight size={15}/></button></div></footer>
       </section>

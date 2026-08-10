@@ -17,7 +17,7 @@ for (const route of ["/dashboard", "/companies", "/companies/cy-materials", "/co
     if (route === "/dashboard") test.slow();
     await page.goto(route);
     await page.locator("main").waitFor();
-    if (route === "/dashboard") await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+    if (route === "/dashboard") await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
     const undersized = await page.locator("body *:visible").evaluateAll((nodes, minimum) => nodes.flatMap((node) => {
       const element = node as HTMLElement;
       const hasOwnCopy = Array.from(element.childNodes).some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim());

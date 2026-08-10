@@ -5,18 +5,24 @@ import {
   companyYearRecordSchema,
   dashboardCommandCenterSchema,
   dashboardInsightsSchema,
+  dataSourceStatusSchema,
+  dataSourceSyncJobSchema,
+  esgRatingRecordSchema,
+  evidencePageReferenceSchema,
   environmentalAspectScoreSchema,
   evidenceItemSchema,
   financialYearRecordSchema,
   panelYearSummarySchema,
   reviewRecordSchema,
+  sourceFieldCatalogSchema,
+  sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
-import type { MetricCode, ReviewRecord } from "@/types";
+import type { MetricCode, ReviewRecord, SourceFileRecord } from "@/types";
 
 export class HttpAnalysisRepository implements AnalysisRepository {
-  constructor(private readonly baseUrl = "/api/v1", private readonly request: typeof fetch = fetch) {}
+  constructor(private readonly baseUrl = "/api/v1", private readonly request: typeof fetch = (...args) => fetch(...args)) {}
 
   private async json(path: string, init?: RequestInit) {
     const response = await this.request(`${this.baseUrl}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -38,6 +44,13 @@ export class HttpAnalysisRepository implements AnalysisRepository {
   }
 
   async listEvidence(companyId: string, scenario: DemoScenario = "success", reportYear?: number) { void scenario; const params = reportYear == null ? "" : `?reportYear=${encodeURIComponent(String(reportYear))}`; return evidenceItemSchema.array().parse(await this.json(`/company-years/${encodeURIComponent(companyId)}/evidence${params}`)); }
+
+  async getEvidencePageText(companyId: string, evidenceId: string, page?: number) {
+    const params = page == null ? "" : `?page=${encodeURIComponent(String(page))}`;
+    const payload = await this.json(`/company-years/${encodeURIComponent(companyId)}/evidence/${encodeURIComponent(evidenceId)}/page${params}`);
+    return payload == null ? null : evidencePageReferenceSchema.parse(payload);
+  }
+
   async listEnvironmentalAspects(companyId: string, reportYear: number) {
     return environmentalAspectScoreSchema.array().parse(await this.json(`/company-years/${encodeURIComponent(companyId)}/environmental-aspects?reportYear=${encodeURIComponent(String(reportYear))}`));
   }
@@ -60,6 +73,11 @@ export class HttpAnalysisRepository implements AnalysisRepository {
     return violationEventSchema.array().parse(await this.json(`/companies/${encodeURIComponent(companyId)}/violation-events?${params}`));
   }
 
+  async listEsgRatings(companyId: string, options: { fromYear?: number; toYear?: number; vendor?: string } = {}) {
+    const params = new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
+    return esgRatingRecordSchema.array().parse(await this.json(`/companies/${encodeURIComponent(companyId)}/esg-ratings?${params}`));
+  }
+
   async listPanelYearSummaries(options: { fromYear?: number; toYear?: number } = {}) {
     const params = new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
     return panelYearSummarySchema.array().parse(await this.json(`/panel/year-summaries?${params}`));
@@ -68,6 +86,7 @@ export class HttpAnalysisRepository implements AnalysisRepository {
   async getDashboardCommandCenter(scenario: DemoScenario = "success", query: CompanyYearQuery = {}) {
     void scenario;
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
+    if (query.light === true) params.set("light", "1");
     return dashboardCommandCenterSchema.parse(await this.json(`/dashboard/command-center?${params}`));
   }
 
@@ -83,5 +102,26 @@ export class HttpAnalysisRepository implements AnalysisRepository {
 
   async saveReview(review: ReviewRecord) {
     return reviewRecordSchema.parse(await this.json("/reviews", { method: "POST", body: JSON.stringify(review) }));
+  }
+
+  async getBaiduNetdiskStatus() {
+    return dataSourceStatusSchema.parse(await this.json("/data-sources/baidu-netdisk/status"));
+  }
+
+  async listBaiduNetdiskFiles(options: { path?: string; kind?: SourceFileRecord["kind"]; parseStatus?: SourceFileRecord["parseStatus"] } = {}) {
+    const params = new URLSearchParams(Object.entries(options).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
+    return sourceFileRecordSchema.array().parse(await this.json(`/data-sources/baidu-netdisk/files?${params}`));
+  }
+
+  async getBaiduNetdiskFieldCatalog(sourceFileId: string) {
+    return sourceFieldCatalogSchema.parse(await this.json(`/data-sources/baidu-netdisk/files/${encodeURIComponent(sourceFileId)}/fields`));
+  }
+
+  async createBaiduNetdiskSync(input: { path?: string; inspectSchemas?: boolean } = {}) {
+    return dataSourceSyncJobSchema.parse(await this.json("/data-sources/baidu-netdisk/sync", { method: "POST", body: JSON.stringify(input) }));
+  }
+
+  async getBaiduNetdiskSyncJob(jobId: string) {
+    return dataSourceSyncJobSchema.parse(await this.json(`/data-sources/baidu-netdisk/sync-jobs/${encodeURIComponent(jobId)}`));
   }
 }

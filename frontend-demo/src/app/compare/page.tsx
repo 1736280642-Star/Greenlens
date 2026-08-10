@@ -4,7 +4,7 @@ import { AlertTriangle, Download, Plus, RefreshCw, Share2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { analysisRepository } from "@/repositories";
-import { useDemoStore } from "@/stores/demo-store";
+import { useDemoStore, defaultYear } from "@/stores/demo-store";
 import { getMetric, type CompanyYearRecord, type MetricCode } from "@/types";
 
 const colors=["#30D5E8","#5B8CFF","#F4D35E","#E879F9","#FF9F43"];
@@ -17,7 +17,7 @@ export default function ComparePage(){
   function exportCompare(){notify("对比摘要已导出",`${selected.length} 家合成公司的指标对比已生成。`);showToast("对比摘要已导出");}
   if(loading)return<div className="page"><div className="skeleton skeleton-header"/><div className="panel skeleton-panel"/></div>;
   if(error)return<div className="state-panel"><AlertTriangle size={24}/><h2>对比数据载入失败</h2><p><strong>成因：</strong>{error}<br/><strong>影响：</strong>当前无法生成跨企业指标对比。<br/><strong>下一步：</strong>检查 Repository 配置或后端状态后重试。</p><button className="primary-button" onClick={()=>location.reload()}><RefreshCw size={15}/>重新载入</button></div>;
-  if(!companies.length)return<div className="state-panel"><RefreshCw size={24}/><h2>当前报告年没有可对比记录</h2><p>{year} 年没有返回公司-年份样本，不能把其他年度数值替代为当前年度。</p><button className="primary-button" onClick={()=>setFilters({year:2025})}>恢复 2025 演示数据</button></div>;
+  if(!companies.length)return<div className="state-panel"><RefreshCw size={24}/><h2>当前报告年没有可对比记录</h2><p>{year} 年没有返回公司-年份样本，不能把其他年度数值替代为当前年度。</p><button className="primary-button" onClick={()=>setFilters({year:defaultYear})}>恢复默认年份样本</button></div>;
   if(selected.length<2)return<div className="state-panel"><Plus size={24}/><h2>选择至少 2 家企业</h2><p>从企业库选择 2-5 家合成公司后，对比 EASS、IR、UPR、ESGSI 和最终指数。</p><Link className="primary-button" href="/companies">从企业库选择</Link></div>;
   return<div className="page compare-page">
     <header className="page-header"><div><h2>指标对比</h2><p>{year} 报告年 · 统一显示原始值与方向，不生成企业“好坏”排名。</p></div><div className="header-actions"><button className="secondary-button" onClick={()=>{navigator.clipboard.writeText(location.href);showToast("分享链接已复制");}}><Share2 size={15}/>复制链接</button><button className="secondary-button" onClick={exportCompare}><Download size={15}/>导出摘要</button></div></header>

@@ -83,3 +83,35 @@ The repeated acceptance workflow is automated in `tests/e2e/workflows.spec.ts`. 
 - Expanding a construct no longer magnifies the same sparse card. It adds the business definition, quartile range, trend coverage, and every annual median from 2016 through 2025; the trend plot expands to use the remaining vertical space.
 - The added metadata made the former three-across tablet layout unreadable. Tablet compatibility now stacks the construct cards vertically, accepting more scrolling in exchange for complete labels and values; desktop remains the release target.
 - Layout tests now block primary rows above 430px, bottom rows below 240px, risk-field width shares above 46%, and compact construct-card clipping.
+
+## Dashboard risk-explanation closure · 2026-08-09
+
+- A hexagonal glyph is not a hexbin. The main risk field now bins every non-empty coordinate cell, maps brightness to sample density and hue to median risk, and keeps threshold lines, axes, and grid visually subordinate to the data cloud.
+- A waterfall must preserve visible arithmetic. Metric medians are rounded to the same percentage-point precision shown to users, each contribution starts at the previous cumulative value, and an explicit normalization step reconciles the displayed components with the final E-AA instead of hiding model calibration.
+- “Persistent risk” needs visible time evidence. Watchlist rows now carry year-over-year direction and a three-year state band; selecting a company propagates to the watchlist row, hexbin halo, construct benchmarks, and waterfall company chip.
+- Single-screen layout is a height-budget problem, not a scale-down problem. Header, toolbar, KPI, primary analysis, secondary analysis, gaps, and status bar now use bounded row formulas that retain 12px readable utility copy at both 1440×900 and 1280×800.
+- Generated historical build and Playwright folders can make repository-wide lint report false failures. They are ignored as generated artifacts rather than deleted, preserving user-owned diagnostics while keeping the source gate meaningful.
+- Playwright’s managed development server must use the same synthetic repository environment as manual validation. Reusing a server without `NEXT_PUBLIC_ANALYSIS_REPOSITORY=mock` produced unrelated data-flow failures; the final 32-test run used the release configuration and passed in full.
+
+## Live Repository cutover · 2026-08-09
+
+- Production-like local runs now default to the HTTP Repository; Mock is an explicit deterministic test mode. Keeping both modes behind the same runtime-validated contract prevents UI modules from branching on data origin.
+- Data-origin language must be stateful. The top bar, data-source page, search actions, Copilot uncertainty copy, and document metadata no longer describe live records as synthetic or synthetic fixtures as live.
+- `schema_pending` has different meanings for workbooks and documents. Workbook field mapping is now counted separately from PDF OCR requirements, so an OCR problem cannot be misreported as an unmapped spreadsheet.
+- The live 2024 command-center response aggregates 2,136 company-year samples while the light payload sends 671 plotting nodes. Full-sample KPIs and sampled rendering preserve analytical totals without forcing every Canvas interaction to carry the entire cohort.
+- Live visual gates and deterministic workflow gates are complementary: the former validates real scale, names, encoding, geometry, and accessibility; the latter protects repeatable report, review, and failure-path behavior.
+- Repository cutover and evidence completion are separate release states. The Dashboard may read live scoring records while the external single-worker PDF queue still contains OCR-required, queued, or failed documents; the UI must expose that coverage gap instead of blocking all live analytics or treating missing evidence as zero risk.
+
+## Evidence linkage migration
+
+- Stock identity now crosses every Repository/PDF boundary as `stock-NNNNNN`; report year and file publication date are stored as separate fields.
+- Annual-report evidence inherits the normalized company-year key of its source PDF. Failed PDF queue identities also participate in linkage diagnostics, so an identifiable parse failure is not mislabeled as an unlinked company.
+- The local-only, idempotent v2 migration keeps a pre-migration SQLite/WAL/SHM backup, backfills all evidence keys in one transaction, and records its aggregate result in metadata. The migration revision participates in live-analysis cache invalidation because payload-only corrections do not change table row counts.
+- Evidence health is intentionally split into three mutually exclusive states: unlinked, parse failed, and linked with coverage below 70%. This preserves the operational cause instead of compressing every gap into one misleading “insufficient evidence” number.
+
+## Dashboard palette convergence · 2026-08-10
+
+- Green was carrying surface, border, brand, positive, low-risk, selected, and chart-series meaning at once. The correction is permission-based: neutral teal owns structure, Cyan owns interaction, Green owns brand/online/low-risk, Amber owns warning/medium-risk, and Coral owns high-risk/red flags.
+- Dashboard surfaces now use a dark-teal ladder (`#03090B` → `#06171A` → `#071C20` → `#082126`). Ordinary borders use low-opacity cyan-gray; only the Hexbin primary panel and selected state receive a Cyan edge.
+- Hexbin opacity now follows fixed density bands rather than a nearly uniform relative range. Heatmap follows Deep Cyan → Aqua → Amber → Orange → Coral, so neither visualization resembles an olive or spreadsheet-green field.
+- Waterfall semantics are calculation-aware: baseline is neutral Cyan, penalties Coral, decreases Aqua, normalization Blue, and Final E-AA is dynamically Low/Medium/High. A 53% final value is therefore Amber instead of Green.

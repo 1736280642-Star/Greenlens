@@ -34,15 +34,23 @@ test("GreenLens Copilot uses one third of a wide desktop viewport", async ({ pag
 });
 
 test("workflow A: dashboard to cited evidence and review", async ({ page }) => {
+  test.slow();
   const errors = monitorConsole(page);
   await page.goto("/dashboard");
   await expect(page.locator(".command-center-eyebrow")).toHaveText("HOLOGRAPHIC EVIDENCE OBSERVATORY");
   await expect(page.locator(".command-center-header h2")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "三方面构造指标" })).toBeVisible();
-  await page.getByRole("button", { name: /修辞—内容差异/ }).click();
-  await expect(page.getByRole("button", { name: /修辞—内容差异/ })).toHaveAttribute("aria-pressed", "true");
-  await page.locator(".cc-watch-main").first().click();
+  const firstTriad = page.locator(".cc-triad-card").first();
+  await firstTriad.click();
+  await expect(firstTriad).toHaveAttribute("aria-pressed", "true");
+  const firstWatch = page.locator(".cc-watch-row").first();
+  const selectedCompany = (await firstWatch.locator(".cc-watch-company").textContent())?.trim() ?? "";
+  await firstWatch.locator(".cc-watch-main").click();
+  await expect(firstWatch).toHaveClass(/selected/);
+  await expect(page.locator(".cc-hexbin-panel")).toHaveClass(/has-company-selection/);
+  await expect(page.locator(".cc-triad-panel")).toHaveClass(/has-company-selection/);
+  await expect(page.locator(".cc-company-chip")).toContainText(selectedCompany);
   await page.keyboard.press("Control+J");
   await expect(page.getByRole("dialog", { name: "绿镜 GreenLens Copilot" })).toBeVisible();
   await page.getByRole("button", { name: /为什么风险高/ }).click();
@@ -64,7 +72,7 @@ test("dashboard risk insights drive the Top 5 review flow", async ({ page }) => 
   await riskFilter.selectOption("全部风险");
   await expect(page.getByRole("heading", { name: "十年风险趋势" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "行业风险热力" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "红旗与数据质量" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "红旗统计" })).toBeVisible();
   const canvases = page.locator("canvas:visible");
   await expect.poll(() => canvases.count()).toBeGreaterThanOrEqual(3);
   for (const canvas of await canvases.all()) {
@@ -86,7 +94,7 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   await expect(currentSample).toBeFocused();
 
   const expandButtons = page.locator(".command-center-page .cc-expand-button");
-  await expect(expandButtons).toHaveCount(6);
+  await expect(expandButtons).toHaveCount(5);
   const triadPanel = page.locator(".cc-triad-panel");
   await expect(triadPanel.getByText("关注率")).toHaveCount(3);
   await expect(triadPanel.getByText("有效样本")).toHaveCount(3);
@@ -109,9 +117,9 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   await expect(trendDialog).toHaveCount(0);
   await expect(trendExpand).toBeFocused();
 
-  const constellationExpand = page.getByRole("button", { name: "展开漂绿风险星图" });
+  const constellationExpand = page.getByRole("button", { name: "展开风险分布概览" });
   await constellationExpand.click();
-  const constellationDialog = page.getByRole("dialog", { name: "漂绿风险星图完整视图" });
+  const constellationDialog = page.getByRole("dialog", { name: "风险分布概览完整视图" });
   await expect(constellationDialog).toBeVisible();
   await expectCanvasPainted(constellationDialog.locator("canvas").first());
   await page.getByRole("button", { name: "关闭完整视图" }).click();
@@ -180,7 +188,7 @@ test("report-year filters query the repository and recover from empty results", 
   await reportYear.selectOption("2024");
   await expect(page.getByRole("heading", { name: "当前筛选下没有样本" })).toBeVisible();
   await page.getByRole("button", { name: "恢复默认视图" }).click();
-  await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
 
   await page.goto("/companies");
   await page.getByLabel("报告年").selectOption("2024");
@@ -189,28 +197,22 @@ test("report-year filters query the repository and recover from empty results", 
   await expect(page.getByText("共 30 家 · 每页 10 条")).toBeVisible();
 });
 
-test("dashboard paints the 2D risk field before the idle 3D chunk runs", async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "requestIdleCallback", { configurable: true, value: () => 1 });
-    Object.defineProperty(window, "cancelIdleCallback", { configurable: true, value: () => undefined });
-  });
+test("dashboard paints the risk distribution canvas on initial render", async ({ page }) => {
   await page.goto("/dashboard");
-  const fallback = page.locator(".cc-risk-fallback-chart");
-  await expect(fallback).toBeVisible();
-  await expect(fallback.locator("canvas")).toBeVisible();
-  await expect(page.locator(".cc-risk-3d")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "3D" })).toBeEnabled();
+  const stage = page.locator(".cc-hexbin-stage");
+  await expect(stage).toBeVisible();
+  await expect(stage.locator("canvas")).toBeVisible();
+  await expectCanvasPainted(stage.locator("canvas"));
 });
 
-test("dashboard keeps the ECharts fallback on low-memory devices", async ({ page }) => {
+test("dashboard keeps the risk distribution canvas on low-memory devices", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "deviceMemory", { configurable: true, value: 2 });
   });
   await page.goto("/dashboard");
-  await page.waitForTimeout(1400);
-  await expect(page.locator(".cc-risk-fallback-chart canvas")).toBeVisible();
-  await expect(page.locator(".cc-risk-3d")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "2D" })).toBeDisabled();
+  const stage = page.locator(".cc-hexbin-stage");
+  await expect(stage).toBeVisible();
+  await expect(stage.locator("canvas")).toBeVisible();
 });
 
 for (const viewport of [
@@ -224,7 +226,7 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/dashboard");
     await expect(page.locator(".command-center-eyebrow")).toHaveText("HOLOGRAPHIC EVIDENCE OBSERVATORY");
-    await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
     if (viewport.width >= 1280) {
       const firstFilter = await page.locator(".command-center-filterbar label").first().boundingBox();
       const toolbarActions = await page.locator(".command-center-toolbar-actions").boundingBox();
@@ -257,7 +259,7 @@ for (const viewport of [
   test(`desktop command center stays complete in one screen: ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/dashboard");
-    await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
     await expect(page.getByText(/计算于/)).toHaveCount(0);
 
     const layout = await page.evaluate(() => {
@@ -325,7 +327,7 @@ for (const viewport of [
 
 test("dashboard has no serious accessibility violations", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "漂绿风险星图" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
   const results = await new AxeBuilder({ page }).disableRules(["color-contrast"]).analyze();
   expect(results.violations.filter((item) => item.impact === "serious" || item.impact === "critical")).toEqual([]);
 });

@@ -6,24 +6,27 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { analysisRepository } from "@/repositories";
 import { useDemoStore } from "@/stores/demo-store";
-import { formatDecimal, formatMetricPercent, formatPercent, getMetric, type CompanyMetricHistoryPoint, type CompanyYearRecord, type EvidenceItem, type MetricCode, type ViolationEvent } from "@/types";
+import { formatDecimal, formatMetricPercent, formatPercent, getMetric, type CompanyMetricHistoryPoint, type CompanyYearRecord, type EsgRatingRecord, type EvidenceItem, type MetricCode, type ViolationEvent } from "@/types";
 
 type Tab = "overview" | "evidence" | "facts" | "ratings" | "history";
 
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
-  const requestedYear = Number(search.get("year") ?? 2025);
-  const reportYear = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100 ? requestedYear : 2025;
+  const requestedYear = Number(search.get("year") ?? 2024);
+  const reportYear = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100 ? requestedYear : 2024;
   const router = useRouter();
   const [company, setCompany] = useState<CompanyYearRecord | null>(null);
   const [items, setItems] = useState<EvidenceItem[]>([]);
   const [events, setEvents] = useState<ViolationEvent[]>([]);
   const [history, setHistory] = useState<CompanyMetricHistoryPoint[]>([]);
+  const [ratings, setRatings] = useState<EsgRatingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
-  const [pdfPage, setPdfPage] = useState(42);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfRef, setPdfRef] = useState<{ sourceLabel: string; page: number; pageCount: number; text: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const tab = (search.get("tab") ?? "overview") as Tab;
   const evidenceId = search.get("evidence");
   const { toggleCompare, compareIds, openDrawer, selectCompany, selectEvidence, notify, showToast } = useDemoStore();
@@ -35,8 +38,9 @@ export default function CompanyDetailPage() {
       analysisRepository.listEvidence(id, "success", reportYear),
       analysisRepository.listViolationEvents(id, { fromYear: reportYear - 4, toYear: reportYear }),
       analysisRepository.getCompanyHistory(id, { fromYear: reportYear - 9, toYear: reportYear }),
+      analysisRepository.listEsgRatings(id, { fromYear: reportYear - 4, toYear: reportYear }),
     ])
-      .then(([record, evidence, violationItems, historyItems]) => { if (active) { setCompany(record); setItems(evidence); setEvents(violationItems); setHistory(historyItems); } })
+      .then(([record, evidence, violationItems, historyItems, ratingItems]) => { if (active) { setCompany(record); setItems(evidence); setEvents(violationItems); setHistory(historyItems); setRatings(ratingItems); } })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "企业分析请求失败。"); })
       .finally(() => { if (active) setLoading(false); });
     selectCompany(id, reportYear);
@@ -50,23 +54,54 @@ export default function CompanyDetailPage() {
 
   function setTab(next: Tab, evidence?: string) { const query = new URLSearchParams(search.toString()); query.set("tab", next); if (evidence) query.set("evidence", evidence); router.replace(`/companies/${id}?${query}`); }
   function openEvidence(evidence: string) { selectEvidence(evidence); setTab("evidence", evidence); }
+  async function openPdf(evidence: EvidenceItem) {
+    if (!company || !evidence.page) return;
+    setPdfLoading(true);
+    try {
+      const reference = await analysisRepository.getEvidencePageText(company.companyId, evidence.id);
+      if (reference) {
+        setPdfRef({ sourceLabel: reference.sourceLabel, page: reference.page, pageCount: reference.pageCount, text: reference.text });
+        setPdfPage(reference.page);
+        setPdfOpen(true);
+      } else {
+        showToast("该证据没有可用的 PDF 原文");
+      }
+    } catch (reason) {
+      showToast(`PDF 原文读取失败：${reason instanceof Error ? reason.message : "数据接口未响应"}`);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+  async function changePdfPage(next: number) {
+    if (!company || !currentEvidence || next < 1) return;
+    setPdfPage(next);
+    setPdfLoading(true);
+    try {
+      const reference = await analysisRepository.getEvidencePageText(company.companyId, currentEvidence.id, next);
+      if (reference) setPdfRef({ sourceLabel: reference.sourceLabel, page: reference.page, pageCount: reference.pageCount, text: reference.text });
+    } catch {
+      // Keep the currently loaded page text when the adjacent page is unavailable.
+    } finally {
+      setPdfLoading(false);
+    }
+  }
   function exportSummary() {
     if (!company) return;
-    const text = `演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。\n\n${company.companyName} 研究摘要\nE-AA-ESGSI：${formatPercent(company.finalIndex)}\nEASS：${formatMetricPercent(company,"EASS")}\nIR：${formatMetricPercent(company,"IR")}\nUPR：${formatMetricPercent(company,"UPR")}\n证据完整度：${company.evidenceCoverage}%\n`;
-    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = `${company.companyId}-research-demo-${new Date().toISOString().slice(0,10)}.txt`; a.click(); URL.revokeObjectURL(url);
-    notify("研究摘要已导出", `${company.companyName}合成研究摘要已生成。`); showToast("研究摘要已导出");
+    const text = `数据版本：${company.versions.data}。风险结果仅作为待复核信号。\n\n${company.companyName} 研究摘要\nE-AA-ESGSI：${formatPercent(company.finalIndex)}\nEASS：${formatMetricPercent(company,"EASS")}\nIR：${formatMetricPercent(company,"IR")}\nUPR：${formatMetricPercent(company,"UPR")}\n证据完整度：${company.evidenceCoverage}%\n`;
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = `${company.companyId}-research-${new Date().toISOString().slice(0,10)}.txt`; a.click(); URL.revokeObjectURL(url);
+    notify("研究摘要已导出", `${company.companyName}当前研究摘要已生成。`); showToast("研究摘要已导出");
   }
 
   return <div className="page company-detail-page">
-    <header className="company-header"><div className="breadcrumbs"><Link href="/companies">企业</Link><ChevronRight size={13}/><span>{company.companyName}</span></div><div className="company-title-row"><div><div className="company-title"><h2>{company.companyName}</h2><span className="demo-badge">DEMO DATA</span></div><p><code>{company.stockCode}</code> · {company.industry} · 虚构交易所 · 报告年度 {company.reportYear}</p></div><div className="header-actions"><button className="secondary-button" onClick={() => { if (!toggleCompare(company.companyId)) showToast("最多同时比较 5 家"); }}><GitCompareArrows size={15}/>{compareIds.includes(company.companyId) ? "移出对比" : "加入对比"}</button><button className="secondary-button" onClick={exportSummary}><Download size={15}/>导出摘要</button><button className="primary-button" onClick={() => { selectEvidence(currentEvidence?.id ?? getMetric(company,"UPR")?.evidenceIds[0] ?? null); openDrawer("review"); }}><ShieldAlert size={15}/>发起复核</button><button className="icon-button" title="复制分析链接" aria-label="复制分析链接" onClick={() => { navigator.clipboard.writeText(location.href); showToast("分析链接已复制"); }}><MoreHorizontal/></button></div></div><div className="company-meta"><span>报告发布日 <code>{company.publishDate}</code></span><span>数据版本 <code>{company.versions.data}</code></span><span>评分版本 <code>{company.versions.model}</code></span><span>最后复核 <code>2026-07-18</code></span></div></header>
+    <header className="company-header"><div className="breadcrumbs"><Link href="/companies">企业</Link><ChevronRight size={13}/><span>{company.companyName}</span></div><div className="company-title-row"><div><div className="company-title"><h2>{company.companyName}</h2><span className="demo-badge">LIVE DATA</span></div><p><code>{company.stockCode}</code> · {company.industry} · 报告年度 {company.reportYear}</p></div><div className="header-actions"><button className="secondary-button" onClick={() => { if (!toggleCompare(company.companyId)) showToast("最多同时比较 5 家"); }}><GitCompareArrows size={15}/>{compareIds.includes(company.companyId) ? "移出对比" : "加入对比"}</button><button className="secondary-button" onClick={exportSummary}><Download size={15}/>导出摘要</button><button className="primary-button" onClick={() => { selectEvidence(currentEvidence?.id ?? getMetric(company,"UPR")?.evidenceIds[0] ?? null); openDrawer("review"); }}><ShieldAlert size={15}/>发起复核</button><button className="icon-button" title="复制分析链接" aria-label="复制分析链接" onClick={() => { navigator.clipboard.writeText(location.href); showToast("分析链接已复制"); }}><MoreHorizontal/></button></div></div><div className="company-meta"><span>报告发布日 <code>{company.publishDate}</code></span><span>数据版本 <code>{company.versions.data}</code></span><span>评分版本 <code>{company.versions.model}</code></span><span>复核状态 <code>{company.reviewStatus}</code></span></div></header>
     <section className="risk-summary-band"><button><span>E-AA-ESGSI</span><strong className="risk-score">{formatPercent(company.finalIndex)}</strong><em>{company.riskBand==="high"?"高风险，建议优先复核":company.riskBand==="medium"?"中风险，建议核验":company.riskBand==="low"?"低风险信号":"暂不可评分，需补充输入"}</em></button><button><span>EASS</span><strong className="risk-score">{formatMetricPercent(company,"EASS")}</strong><em>越高表示行动越实质</em></button><button><span>IR / UPR</span><strong>{formatMetricPercent(company,"IR")} / {formatMetricPercent(company,"UPR")}</strong><em>模糊声明 / 未验证计划</em></button><button onClick={() => { const evidenceId=getMetric(company,"UPR")?.evidenceIds[0]; if(evidenceId) openEvidence(evidenceId); }}><span>主要原因</span><strong>未验证计划比例</strong><em>定位分子与证据 →</em></button></section>
     <nav className="tabs" aria-label="企业分析视图">{[["overview","总览"],["evidence","报告证据"],["facts","外部事实"],["ratings","评级分歧"],["history","历史变化"]].map(([key,label]) => <button className={tab === key ? "active" : ""} onClick={() => setTab(key as Tab)} key={key}>{label}</button>)}</nav>
     {tab === "overview" && <Overview company={company} onEvidence={openEvidence} />}
-    {tab === "evidence" && <EvidenceView items={items} current={currentEvidence} onSelect={(item) => { selectEvidence(item.id); setTab("evidence", item.id); }} onAI={() => openDrawer("ai")} onReview={() => openDrawer("review")} onPdf={() => { setPdfPage(currentEvidence?.page ?? 42); setPdfOpen(true); }} />}
+    {tab === "evidence" && <LiveEvidenceView items={items} current={currentEvidence} onSelect={(item) => { selectEvidence(item.id); setTab("evidence", item.id); }} onAI={() => openDrawer("ai")} onReview={() => openDrawer("review")} onPdf={(item) => void openPdf(item)} />}
     {tab === "facts" && <FactsView events={events} evidenceId={items.find((item) => item.type === "external")?.id} onReview={(evidence) => { selectEvidence(evidence); openDrawer("review"); }} />}
-    {tab === "ratings" && <RatingsView />}
+    {tab === "ratings" && <LiveRatingsView ratings={ratings} reportYear={reportYear} />}
     {tab === "history" && <HistoryView company={company} history={history} />}
-    {pdfOpen && <div className="modal-scrim"><section className="modal pdf-modal" role="dialog" aria-modal="true" aria-label="模拟 PDF 查看器"><header><div><FileText size={17}/><h3>2025 可持续发展报告（合成）</h3><code>第 {pdfPage} 页</code></div><button className="icon-button" onClick={() => setPdfOpen(false)} aria-label="关闭 PDF 查看器"><X/></button></header><div className="pdf-toolbar"><button className="secondary-button" disabled={pdfPage <= 1} onClick={() => setPdfPage((page) => Math.max(1, page - 1))}>上一页</button><span>{pdfPage} / 86</span><button className="secondary-button" disabled={pdfPage >= 86} onClick={() => setPdfPage((page) => Math.min(86, page + 1))}>下一页</button></div><div className="pdf-page"><span>GREENLENS SYNTHETIC REPORT</span><h3>环境目标与行动进展</h3><p>公司计划在 2030 年前显著提高低碳材料占比，并持续优化生产环节的环境表现。</p><p className="pdf-highlight">{pdfPage === (currentEvidence?.page ?? 42) ? "当前披露未包含可核验的基准年、阶段目标或第三方鉴证范围。" : "当前页为合成报告的相邻页面演示。"}</p><p>本页全部文字为前端演示生成，不来自任何真实企业或报告。</p><small>{pdfPage}</small></div></section></div>}
+    {pdfOpen && <div className="modal-scrim"><section className="modal pdf-modal" role="dialog" aria-modal="true" aria-label="PDF 原文查看器"><header><div><FileText size={17}/><h3>{pdfRef?.sourceLabel ?? "PDF 原文"}</h3><code>第 {pdfPage} 页</code></div><button className="icon-button" onClick={() => setPdfOpen(false)} aria-label="关闭 PDF 查看器"><X/></button></header>{pdfRef && <div className="pdf-toolbar"><button className="secondary-button" disabled={pdfPage <= 1 || pdfLoading} onClick={() => void changePdfPage(pdfPage - 1)}>上一页</button><span>{pdfPage} / {pdfRef.pageCount}</span><button className="secondary-button" disabled={pdfPage >= pdfRef.pageCount || pdfLoading} onClick={() => void changePdfPage(pdfPage + 1)}>下一页</button></div>}<div className="pdf-page"><span>GREENLENS READ-ONLY SOURCE</span><h3>第 {pdfPage} 页</h3>{pdfLoading ? <p>正在载入原文…</p> : <p className="pdf-highlight">{pdfRef?.text || "当前页没有可展示的文本层。"}</p>}<small>{pdfPage}</small></div></section></div>}
   </div>;
 }
 
@@ -76,9 +111,39 @@ function Overview({ company, onEvidence }: { company: CompanyYearRecord; onEvide
   return <div className="detail-grid metric-detail-grid"><section className="panel"><header className="panel-header"><div><h3>核心指标</h3><p>原始值、归一化值与风险方向分开</p></div><code>{company.versions.score}</code></header><div className="panel-body metric-ledger detail-ledger">{company.metrics.map((metric)=><button className="ledger-row" key={metric.code} disabled={!metric.evidenceIds[0]} onClick={()=>metric.evidenceIds[0]&&onEvidence(metric.evidenceIds[0])}><span><strong>{metric.code.replace("EAA_ESGSI","E-AA-ESGSI")}</strong><small>{metric.label}</small></span><span className="ledger-meter"><i style={{width:`${(metric.riskValue??0)*100}%`}}/><b style={{left:`${(metric.threshold??.5)*100}%`}}/></span><code>{formatPercent(metric.normalizedValue)}</code></button>)}</div><div className="index-waterfall detail-waterfall"><span><small>ESGSI</small><strong>{formatDecimal(company.indexBreakdown.baseEsgsiNormalized)}</strong></span><i>+</i><span><small>行动</small><strong>{formatDecimal(company.indexBreakdown.actionPenalty.contribution)}</strong></span><i>+</i><span><small>模糊</small><strong>{formatDecimal(company.indexBreakdown.indeterminatePenalty.contribution)}</strong></span><i>+</i><span><small>计划</small><strong>{formatDecimal(company.indexBreakdown.planningPenalty.contribution)}</strong></span><i>=</i><span className="final"><small>原始 / 归一化</small><strong>{formatDecimal(company.indexBreakdown.finalRaw)} / {formatDecimal(company.indexBreakdown.finalNormalized)}</strong></span></div></section><section className="panel"><header className="panel-header"><div><h3>文本与 ESG 关注度</h3><p>预处理输出与 E/S/G 结构</p></div></header><div className="text-stat-grid"><span><small>总词数</small><strong>{company.textProcessing.totalWords.toLocaleString()}</strong></span><span><small>环境句</small><strong>{company.textProcessing.environmentalSentenceCount.toLocaleString()}</strong></span><span><small>Tokens</small><strong>{company.textProcessing.tokenCount.toLocaleString()}</strong></span><span><small>失衡</small><strong>{Math.round(focus.imbalanceScore*100)}%</strong></span></div><div className="focus-bars">{[["E",focus.eCount,focus.eFocus,"#30D5E8"],["S",focus.sCount,focus.sFocus,"#5B8CFF"],["G",focus.gCount,focus.gFocus,"#E879F9"]].map(([label,count,value,color])=><div key={label as string}><span><strong>{label}</strong><code>{count as number} · {(Number(value)*100).toFixed(2)}%</code></span><i><b style={{width:`${Math.min(100,Number(value)*5000)}%`,background:color as string}}/></i></div>)}</div><div className="action-composition-detail"><span><strong>行动分类</strong><code>{actions.totalStatements} 条</code></span><div className="action-stack"><i style={{width:`${actions.totalStatements?actions.implemented/actions.totalStatements*100:0}%`,background:"#38E07B"}}/><i style={{width:`${actions.totalStatements?actions.planning/actions.totalStatements*100:0}%`,background:"#5B8CFF"}}/><i style={{width:`${actions.totalStatements?actions.indeterminate/actions.totalStatements*100:0}%`,background:"#F4D35E"}}/></div><small>已实施 {actions.implemented} · 计划 {actions.planning} · 模糊 {actions.indeterminate}</small></div></section><section className="panel evidence-table-panel"><header className="panel-header"><div><h3>关键证据</h3><p>指标可回溯到分子、分母与原文</p></div></header><div className="evidence-rows"><button disabled={!uprEvidence} onClick={()=>uprEvidence&&onEvidence(uprEvidence)}><i className="warning"/><span><strong>UPR：计划缺少基准年与阶段目标</strong><small>报告第 42 页 · 分子证据</small></span><ChevronRight/></button><button disabled={!eassEvidence} onClick={()=>eassEvidence&&onEvidence(eassEvidence)}><i className="pending"/><span><strong>EASS：行动仍处于计划阶段</strong><small>报告第 43 页 · 行动分类</small></span><ChevronRight/></button><button disabled={!esgsiEvidence} onClick={()=>esgsiEvidence&&onEvidence(esgsiEvidence)}><i className="danger"/><span><strong>ESGSI：实质信息缺少可比数据</strong><small>报告第 47 页 · 量化证据</small></span><ChevronRight/></button></div></section><section className="panel next-actions"><header className="panel-header"><h3>下一步建议</h3></header><ol><li><span>核验</span>确认计划的时间、KPI、方法和路径</li><li><span>复核</span>抽查环境行动三分类</li><li><span>补充</span>确认第三方鉴证范围</li></ol></section></div>;
 }
 
-function EvidenceView({ items, current, onSelect, onAI, onReview, onPdf }: { items: EvidenceItem[]; current?: EvidenceItem; onSelect: (item: EvidenceItem) => void; onAI: () => void; onReview: () => void; onPdf: () => void }) {
-  if (!current) return <div className="state-panel"><FileText/><h2>暂无报告证据</h2><p>当前演示公司没有匹配的合成报告片段。</p></div>;
-  return <div className="evidence-workspace"><aside className="evidence-nav"><label><Search size={15}/><input placeholder="搜索报告证据"/></label><span className="section-kicker">报告目录</span>{items.filter((item) => item.type !== "external").map((item) => <button className={current.id === item.id ? "active" : ""} key={item.id} onClick={() => onSelect(item)}><span>第 {item.page} 页</span><strong>{item.title}</strong><small>{item.type === "action" ? "行动分类" : item.type === "metric" ? "量化指标" : "环境声明"} · {item.status === "insufficient" ? "证据不足" : "待复核"}</small></button>)}</aside><article className="evidence-document"><header><span>第 {current.page} 页</span><button className="secondary-button" onClick={onPdf}><FileText size={14}/>查看原 PDF</button></header><div className="document-sheet"><span className="section-kicker">4.2 环境目标与行动进展</span><h3>低碳材料与供应链协同</h3><p>面对行业低碳转型，公司持续推进材料配方优化和能源效率提升。报告期内，试点产线完成多项流程改造，并在供应链协同方面形成新的工作机制。</p><p>公司计划在 <mark className="claim-mark">2030 年前显著提高低碳材料占比</mark>，并持续优化生产环节的环境表现。围绕这一方向，公司将建立内部追踪机制，定期评估实施进度。</p><p>当前披露中，<mark className="gap-mark">尚未提供基准年、阶段目标或第三方鉴证范围</mark>。相关指标将在后续报告中持续完善。</p><p>以上段落为固定合成文本，仅用于演示证据定位与复核交互。</p></div></article><aside className="evidence-explanation"><span className="status-chip pending">{current.metricCode?.replace("EAA_ESGSI","E-AA-ESGSI") ?? "证据"} 支撑要素不足</span><h3>{current.title}</h3><p>{current.excerpt}</p><dl><div><dt>命中依据</dt><dd>方向性承诺缺少可复核参数</dd></div><div><dt>缺失项</dt><dd>基准年 · 阶段目标 · 鉴证边界</dd></div><div><dt>关联事实</dt><dd><button>许可核算边界发生变更</button></dd></div></dl><div className="inline-actions"><button className="secondary-button" onClick={onReview}>加入复核</button><button className="primary-button" onClick={onAI}><Bot size={15}/>询问 AI</button></div></aside></div>;
+function LiveEvidenceView({ items, current, onSelect, onAI, onReview, onPdf }: { items: EvidenceItem[]; current?: EvidenceItem; onSelect: (item: EvidenceItem) => void; onAI: () => void; onReview: () => void; onPdf: (item: EvidenceItem) => void }) {
+  if (!current) return <div className="state-panel"><FileText/><h2>暂无报告证据</h2><p>当前公司年度尚未形成可展示的结构化证据记录。</p></div>;
+  return <div className="evidence-workspace">
+    <aside className="evidence-nav"><label><Search size={15}/><input placeholder="搜索证据元数据"/></label><span className="section-kicker">证据索引</span>{items.filter((item) => item.type !== "external").map((item) => <button className={current.id === item.id ? "active" : ""} key={item.id} onClick={() => onSelect(item)}><span>{item.page ? `第 ${item.page} 页` : "页码缺失"}</span><strong>{item.title}</strong><small>{item.actionClass ?? item.type} · {item.status === "insufficient" ? "证据不足" : "待复核"}</small></button>)}</aside>
+    <article className="evidence-document"><header><span>{current.page ? `第 ${current.page} 页` : "页码缺失"}</span><code>{current.sourceLabel}</code><button className="secondary-button" disabled={!current.page} onClick={() => onPdf(current)}><FileText size={14}/>查看原 PDF</button></header><div className="document-sheet"><span className="section-kicker">READ-ONLY SOURCE REFERENCE</span><h3>{current.title}</h3><p>{current.excerpt || "该证据没有可展示的原文段落。"}</p><p><strong>证据类型：</strong>{current.type}　<strong>行动分类：</strong>{current.actionClass ?? "未分类"}　<strong>复核状态：</strong>{current.status}</p></div></article>
+    <aside className="evidence-explanation"><span className={`status-chip ${current.status}`}>{current.status === "insufficient" ? "证据不足" : "待复核"}</span><h3>{current.title}</h3><p>原文段落由后端从 PDF 文本层提取并持久化；「查看原 PDF」仅返回证据定位页的只读文本，不下发文件本体。</p><dl><div><dt>来源文件</dt><dd>{current.sourceLabel}</dd></div><div><dt>定位页码</dt><dd>{current.page ?? "--"}</dd></div><div><dt>结构化分类</dt><dd>{current.actionClass ?? current.type}</dd></div></dl><div className="inline-actions"><button className="secondary-button" onClick={onReview}>加入复核</button><button className="primary-button" onClick={onAI}><Bot size={15}/>询问 AI</button></div></aside>
+  </div>;
+}
+
+const vendorLabels: Record<string, string> = {
+  csmar_shangdao: "商道融绿 (CSMAR)",
+  csmar_runling: "润灵环球 (CSMAR)",
+  wind_shangdao: "商道融绿 (Wind)",
+  huazheng: "华证",
+  msci: "MSCI",
+  bloomberg: "彭博",
+  cnrds: "CNRDS",
+  wind: "Wind ESG",
+  menglang: "盟浪",
+  ftse: "富时罗素",
+  hexun: "和讯",
+};
+
+function LiveRatingsView({ ratings, reportYear }: { ratings: EsgRatingRecord[]; reportYear: number }) {
+  const filtered = ratings.filter((item) => item.reportYear >= reportYear - 4 && item.reportYear <= reportYear);
+  if (!filtered.length) return <div className="state-panel"><ShieldAlert/><h2>暂无外部评级数据</h2><p>当前公司报告年度区间内没有可用的外部 ESG 评级记录。</p></div>;
+  const vendors = [...new Set(filtered.map((item) => item.vendor))].sort();
+  const years = [...new Set(filtered.map((item) => item.reportYear))].sort((a, b) => a - b);
+  return <section className="panel ratings-detail"><header className="panel-header"><div><h3>多源外部 ESG 评级</h3><p>各来源独立展示，不以均值替代原始评分；数值量纲见评分尺度列</p></div><code>{years.length} 年 × {vendors.length} 家来源</code></header>
+    <div className="data-table-wrap"><table className="data-table ratings-table"><thead><tr><th>来源</th>{years.map((year) => <th key={year} className="numeric">{year}</th>)}<th>评分尺度</th></tr></thead>
+    <tbody>{vendors.map((vendor) => { const vendorRows = filtered.filter((item) => item.vendor === vendor); return <tr key={vendor}><td><strong>{vendorLabels[vendor] ?? vendor}</strong></td>{years.map((year) => { const row = vendorRows.find((item) => item.reportYear === year); return <td key={year} className="numeric">{row ? (row.rating || (row.score == null ? "--" : row.score)) : "—"}</td>; })}<td>{vendorRows[0]?.scoreScale ?? "--"}</td></tr>; })}</tbody></table></div>
+    <div className="method-note"><strong>如何理解分歧</strong><p>不同机构的覆盖范围、年份口径与归一化方式不同；离散程度仅作为补充证据，不直接等同于综合风险。</p></div>
+  </section>;
 }
 
 function FactsView({ events, evidenceId, onReview }: { events: ViolationEvent[]; evidenceId?: string; onReview: (id: string) => void }) {
@@ -89,7 +154,6 @@ function FactsView({ events, evidenceId, onReview }: { events: ViolationEvent[];
   const current = events[selectedIndex];
   return <div className="facts-layout"><section className="panel event-timeline"><header className="panel-header"><h3>违规与监管事件</h3><span>违规年度 ≠ 公告日期</span></header>{events.map((event,index)=><button className={selectedIndex===index?"selected":""} onClick={()=>setSelected(index)} key={event.id}><span><CalendarDays size={15}/>{event.announcementDate}</span><strong>{event.title ?? event.violationTypes.join("、")}</strong><small>{event.authority ?? event.sourceLabel}</small></button>)}</section><section className="panel fact-detail"><header className="panel-header"><div><h3>{current.title ?? current.violationTypes.join("、")}</h3><p>{current.announcementDate} · {current.authority ?? current.sourceLabel}</p></div><span className={`status-chip ${current.reviewStatus}`}>{current.reviewStatus === "verified" ? "已核验" : current.reviewStatus === "insufficient" ? "证据不足" : "待复核"}</span></header><div className="panel-body"><p>{current.behavior}</p><div className="fact-metrics"><div><span>关联主体</span><strong>{current.relation ?? "待确认"}</strong><small>{current.subjectName ?? "主体名称缺失"}</small></div><div><span>违规年度</span><strong>{current.violationYears.join(" / ")}</strong><small>{current.violationTypes.join("、")}</small></div><div><span>处罚金额</span><strong>{current.companyPenalty == null ? "未披露" : `¥${current.companyPenalty.toLocaleString()}`}</strong><small>{current.action}</small></div></div><fieldset><legend>人工判断</legend>{["相关","不相关","部分相关","无法判断"].map((label)=><button key={label} disabled={!evidenceId} onClick={()=>evidenceId&&onReview(evidenceId)}>{label}</button>)}</fieldset>{current.sourceUrl&&<a href={current.sourceUrl} onClick={(event)=>{event.preventDefault();showToast("虚构来源不发起外部访问");}} className="source-link">查看虚构来源 <ExternalLink size={13}/></a>}</div></section></div>;
 }
-function RatingsView() { const sources=[["Northstar ESG",68],["CivicRate",42],["TerraIndex",76],["Veritas E",55]]; return <section className="panel ratings-detail"><header className="panel-header"><div><h3>多源环境评级</h3><p>分歧程度独立展示，不以均值替代原始评分</p></div></header><div className="rating-axis"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>{sources.map(([source,score],index)=><div className="rating-source" key={source}><strong>{source}</strong><div><i style={{left:`${score}%`,background:["#30D5E8","#5B8CFF","#F4D35E","#E879F9"][index]}}/><span style={{left:`${score}%`}}>{score}</span></div><small>2025 · 环境维度 · 合成更新</small></div>)}<div className="method-note"><strong>如何理解分歧</strong><p>不同虚构机构采用的覆盖维度与归一化方式不同。离散程度仅作为补充证据，不直接等同于综合风险。</p></div></section>; }
 function HistoryView({ company, history }: { company: CompanyYearRecord; history: CompanyMetricHistoryPoint[] }) {
   const options: Array<[string, MetricCode | "FINAL"]> = [["E-AA-ESGSI","FINAL"],["EASS","EASS"],["IR","IR"],["UPR","UPR"],["ESGSI","ESGSI"],["Imbalance","IMBALANCE"]];
   const [metric,setMetric]=useState(options[0][0]);

@@ -235,6 +235,7 @@ function createCompany(item: PreparedCompany): CompanyYearRecord {
       actionPenalty: { inputValue: round(1 - item.eass), weight: scoringParameters.lambdaAction, contribution: round(item.actionPenalty) },
       indeterminatePenalty: { inputValue: round(item.ir), weight: scoringParameters.lambdaIndeterminate, contribution: round(item.indeterminatePenalty) },
       planningPenalty: { inputValue: round(item.upr), weight: scoringParameters.lambdaPlanning, contribution: round(item.planningPenalty) },
+      evidenceAdjustment: { inputValue: round(seed.coverage / 100), weight: 0.06, contribution: round(0.06 * Math.max(0, 0.7 - seed.coverage / 100)) },
       finalRaw: round(item.finalRaw),
       finalNormalized: round(finalIndex),
       normalizationVersion: "eaa-demo-cohort-minmax-v1",

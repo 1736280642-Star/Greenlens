@@ -6,16 +6,21 @@ import {
   companyYearListSchema,
   dashboardCommandCenterSchema,
   dashboardInsightsSchema,
+  dataSourceStatusSchema,
+  dataSourceSyncJobSchema,
+  esgRatingRecordSchema,
   environmentalAspectScoreSchema,
   evidenceItemSchema,
   financialYearRecordSchema,
   panelYearSummarySchema,
   reviewRecordSchema,
+  sourceFieldCatalogSchema,
+  sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import { buildDashboardCommandCenter } from "@/repositories/dashboard-command-center";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
-import type { AnalysisJob, MetricCode, ReviewRecord } from "@/types";
+import type { AnalysisJob, DataSourceSyncJob, MetricCode, ReviewRecord, SourceFileRecord } from "@/types";
 
 export type { DemoScenario } from "@/repositories/analysis-repository";
 
@@ -31,6 +36,31 @@ interface StoredAnalysisJob {
 }
 
 const jobs = new Map<string, StoredAnalysisJob>();
+const sourceSyncJobs = new Map<string, DataSourceSyncJob>();
+const syntheticSourceFiles: SourceFileRecord[] = [
+  {
+    id: "source-finance-workbook", provider: "baidu_netdisk", path: "/greenwashing/financial", filename: "financial-indicators.xlsx",
+    fsid: "synthetic-fsid-finance", size: 1_024, kind: "financial_workbook", parseStatus: "ready",
+    discoveredAt: "2026-08-03T00:00:00.000Z", detectedFields: ["Stkcd", "ShortName", "Accper", "F011201A", "F050201B", "A001000000"], qualityFlags: [],
+  },
+  {
+    id: "source-violation-workbook", provider: "baidu_netdisk", path: "/greenwashing/violations", filename: "violation-events.xlsx",
+    fsid: "synthetic-fsid-violation", size: 2_048, kind: "violation_workbook", parseStatus: "schema_pending",
+    discoveredAt: "2026-08-03T00:00:00.000Z", detectedFields: [], qualityFlags: ["SCHEMA_INSPECTION_REQUIRED"],
+  },
+];
+const syntheticSourceFieldCatalogs = new Map([
+  ["source-finance-workbook", {
+    sourceFileId: "source-finance-workbook", sheetName: "Sheet1", fields: [
+      { sourceField: "Stkcd", targetField: "stockCode", dataType: "string", required: true, status: "mapped" },
+      { sourceField: "ShortName", targetField: "companyName", dataType: "string", required: true, status: "mapped" },
+      { sourceField: "Accper", targetField: "fiscalPeriodEnd", dataType: "date", required: true, status: "mapped" },
+      { sourceField: "F011201A", targetField: "assetLiabilityRatio", dataType: "number", required: false, status: "mapped" },
+      { sourceField: "F050201B", targetField: "roaA", dataType: "number", required: false, status: "mapped" },
+      { sourceField: "A001000000", targetField: "totalAssets", dataType: "number", required: false, status: "mapped" },
+    ],
+  }],
+]);
 const validatedCompanies = companyYearListSchema.parse(companies);
 const validatedEvidence = evidenceItemSchema.array().parse(evidence);
 const validatedAspects = environmentalAspectScoreSchema.array().parse(environmentalAspects);
@@ -39,6 +69,7 @@ const validatedFinancials = financialYearRecordSchema.array().parse(financialRec
 const validatedPanelYearSummaries = panelYearSummarySchema.array().parse(panelYearSummaries);
 const validatedViolationEvents = violationEventSchema.array().parse(violationEvents);
 const validatedDashboardInsights = dashboardInsightsSchema.parse(dashboardInsights);
+const validatedSourceFiles = sourceFileRecordSchema.array().parse(syntheticSourceFiles);
 
 function advanceJob(stored: StoredAnalysisJob): AnalysisJob {
   const elapsed = Date.now() - stored.createdAt;
@@ -85,6 +116,20 @@ export const demoRepository: AnalysisRepository = {
     await wait(scenario);
     return scenario === "empty" ? [] : structuredClone(validatedEvidence.filter((item) => item.companyId === companyId && (!reportYear || item.reportYear === reportYear)));
   },
+  async getEvidencePageText(companyId: string, evidenceId: string, page?: number) {
+    const item = validatedEvidence.find((entry) => entry.companyId === companyId && entry.id === evidenceId);
+    if (!item) return null;
+    return {
+      evidenceId: item.id,
+      companyId,
+      reportYear: item.reportYear,
+      documentId: `demo-document-${item.sourceLabel}`,
+      sourceLabel: item.sourceLabel,
+      page: page ?? item.page ?? 1,
+      pageCount: 86,
+      text: item.excerpt,
+    };
+  },
   async listEnvironmentalAspects(companyId: string, reportYear: number) {
     return structuredClone(validatedAspects.filter((item) => item.companyId === companyId && item.reportYear === reportYear));
   },
@@ -107,6 +152,10 @@ export const demoRepository: AnalysisRepository = {
       return true;
     }));
   },
+  async listEsgRatings(companyId: string, options: { fromYear?: number; toYear?: number; vendor?: string } = {}) {
+    void companyId; void options;
+    return esgRatingRecordSchema.array().parse([]);
+  },
   async listPanelYearSummaries(options: { fromYear?: number; toYear?: number } = {}) {
     return structuredClone(validatedPanelYearSummaries.filter((item) =>
       (!options.fromYear || item.year >= options.fromYear) && (!options.toYear || item.year <= options.toYear),
@@ -119,6 +168,7 @@ export const demoRepository: AnalysisRepository = {
       scenario === "empty" ? [] : validatedHistory,
       scenario === "empty" ? [] : validatedPanelYearSummaries,
       query,
+      { light: query.light === true },
     );
     return structuredClone(dashboardCommandCenterSchema.parse(payload));
   },
@@ -139,4 +189,35 @@ export const demoRepository: AnalysisRepository = {
     return structuredClone(analysisJobSchema.parse(job));
   },
   async saveReview(review: ReviewRecord) { return structuredClone(reviewRecordSchema.parse(review)); },
+  async getBaiduNetdiskStatus() {
+    return structuredClone(dataSourceStatusSchema.parse({
+      provider: "baidu_netdisk", rootPath: "/greenwashing", connectionStatus: "connected", lastSyncedAt: "2026-08-03T00:00:00.000Z",
+      fileCount: validatedSourceFiles.length, readyFileCount: 1, schemaPendingFileCount: 1,
+    }));
+  },
+  async listBaiduNetdiskFiles(options = {}) {
+    return structuredClone(validatedSourceFiles.filter((file) =>
+      (!options.path || file.path.startsWith(options.path))
+      && (!options.kind || file.kind === options.kind)
+      && (!options.parseStatus || file.parseStatus === options.parseStatus),
+    ));
+  },
+  async getBaiduNetdiskFieldCatalog(sourceFileId: string) {
+    const catalog = syntheticSourceFieldCatalogs.get(sourceFileId);
+    if (!catalog) throw new Error("Source file schema is not available. Run schema inspection first.");
+    return structuredClone(sourceFieldCatalogSchema.parse(catalog));
+  },
+  async createBaiduNetdiskSync() {
+    const job: DataSourceSyncJob = {
+      jobId: crypto.randomUUID(), provider: "baidu_netdisk", status: "queued", phase: "discover", progress: 0,
+      discoveredFileCount: 0, readyFileCount: 0,
+    };
+    sourceSyncJobs.set(job.jobId, job);
+    return structuredClone(dataSourceSyncJobSchema.parse(job));
+  },
+  async getBaiduNetdiskSyncJob(jobId: string) {
+    const job = sourceSyncJobs.get(jobId);
+    if (!job) throw new Error("Data-source sync job was not found.");
+    return structuredClone(dataSourceSyncJobSchema.parse(job));
+  },
 };

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Bell, BrainCircuit, Building2, Check, ChevronRight, FileScan, GitCompareArrows, ListChecks, Search, ShieldAlert, Sparkles, TableProperties, Undo2, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { analysisRepository } from "@/repositories";
+import { analysisRepository, analysisRepositoryMode } from "@/repositories";
 import { useDemoStore } from "@/stores/demo-store";
 import { getMetric, type CompanyYearRecord, type EvidenceItem } from "@/types";
 
@@ -82,7 +82,7 @@ export function GlobalLayers() {
     ...[
       ["风险总览", "查看声明 × 事实矩阵", "/dashboard"],
       ["企业库", "搜索与建立对比组", "/companies"],
-      ["报告检测", "运行合成检测任务", "/reports"],
+      ["报告检测", analysisRepositoryMode === "http" ? "运行后端检测任务" : "运行合成检测任务", "/reports"],
       ["复核中心", "处理人工判断队列", "/review"],
     ].filter(([label, detail]) => `${label}${detail}`.includes(query)).map(([label, detail, href]) => ({ label, detail, href })),
   ].slice(0, 7);
@@ -146,7 +146,7 @@ export function GlobalLayers() {
             </button>
           </div>
           <p className="drawer-kicker">不确定性</p>
-          <p>演示版不读取真实 PDF 正文，也没有连接外部来源。主体匹配和事件相关性需要人工确认。</p>
+          <p>{analysisRepositoryMode === "http" ? "证据原文由后端从 PDF 文本层提取，仅返回定位页的只读文本；主体匹配、事件相关性和证据覆盖仍需要人工确认。" : "当前为合成数据；主体、事件和证据仅用于演示复核流程。"}</p>
           <p className="drawer-kicker">建议核验动作</p>
           <ul className="plain-list"><li>核验目标的基准年与核算边界</li><li>确认外部事件是否属于同一经营主体</li><li>记录人工判断并保留原因</li></ul>
         </div>

@@ -28,6 +28,7 @@ interface ScatterDatum {
   riskBand: RiskBand;
   evidenceCoverage: number;
   history: DashboardRiskNode["history"];
+  persistentHighRiskYears: number;
   focusRisk: number | null;
   itemStyle: { color: string; opacity: number; borderColor: string; borderWidth: number; shadowBlur: number; shadowColor: string };
 }
@@ -76,6 +77,7 @@ export function RiskConstellationFallback({
       riskBand: node.riskBand,
       evidenceCoverage: node.evidenceCoverage,
       history: node.history,
+      persistentHighRiskYears: node.persistentHighRiskYears,
       focusRisk,
       itemStyle: {
         color: baseColor,
@@ -106,7 +108,9 @@ export function RiskConstellationFallback({
       formatter: (params: unknown) => {
         const datum = (params as { data?: ScatterDatum }).data;
         if (!datum) return "";
-        const sequence = datum.history.map((point) => `${point.year}:${point.riskBand === "high" ? "高" : point.riskBand === "medium" ? "中" : point.riskBand === "low" ? "低" : "—"}`).join(" · ");
+        const sequence = datum.history?.length
+          ? datum.history.map((point) => `${point.year}:${point.riskBand === "high" ? "高" : point.riskBand === "medium" ? "中" : point.riskBand === "low" ? "低" : "—"}`).join(" · ")
+          : datum.persistentHighRiskYears ? `近三年持续高风险 ${datum.persistentHighRiskYears} 年` : "暂无跨年序列";
         return `<div class="cc-chart-tooltip"><strong>${escapeHtml(datum.companyName)}</strong><span>${escapeHtml(datum.stockCode)} · ${escapeHtml(datum.industry)}</span><dl><dt>EASS</dt><dd>${formatPercent(datum.value[0])}</dd><dt>E-AA</dt><dd>${formatPercent(datum.value[1])}</dd><dt>证据完整度</dt><dd>${Math.round(datum.evidenceCoverage)}%</dd></dl><small>${escapeHtml(sequence || "暂无跨年序列")}</small></div>`;
       },
     },

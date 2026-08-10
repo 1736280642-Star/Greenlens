@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { analysisRepositoryMode } from "@/repositories";
 import type { ReviewRecord, SampleGroup } from "@/types";
 
 type Drawer = "none" | "ai" | "review" | "notifications" | "command";
@@ -35,13 +36,16 @@ interface DemoState {
   openDrawer: (drawer: Drawer) => void;
   notify: (title: string, detail: string) => void;
   showToast: (message: string | null) => void;
+  setPendingReviews: (count: number) => void;
   saveReview: (review: ReviewRecord) => void;
   undoReview: (id: string) => void;
   reset: () => void;
 }
 
+export const defaultYear = analysisRepositoryMode === "mock" ? 2025 : 2024;
+
 const defaults = {
-  year: 2025,
+  year: defaultYear,
   industry: "全部行业",
   risk: "全部风险",
   sampleGroup: "all" as const,
@@ -49,10 +53,10 @@ const defaults = {
   selectedReportYear: null,
   selectedEvidenceId: null,
   compareIds: ["cy-materials", "linhai-energy"],
-  pendingReviews: 28,
+  pendingReviews: 0,
   reviews: [] as ReviewRecord[],
   notifications: [
-    { id: "welcome", title: "演示工作区已就绪", detail: "当前加载 2025 年合成样本。", time: "刚刚" },
+    { id: "welcome", title: "研究工作区已就绪", detail: "当前加载 2024 年 EAA 实数据样本。", time: "刚刚" },
   ] as Notification[],
   drawer: "none" as Drawer,
   toast: null as string | null,
@@ -81,6 +85,7 @@ export const useDemoStore = create<DemoState>()(
         notifications: [{ id: crypto.randomUUID(), title, detail, time: "刚刚" }, ...state.notifications],
       })),
       showToast: (toast) => set({ toast }),
+      setPendingReviews: (count) => set({ pendingReviews: Math.max(0, count) }),
       saveReview: (review) => set((state) => ({
         reviews: [review, ...state.reviews.filter((item) => item.id !== review.id)],
         pendingReviews: Math.max(0, state.pendingReviews - 1),

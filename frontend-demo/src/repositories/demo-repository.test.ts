@@ -25,6 +25,14 @@ describe("demoRepository", () => {
     expect(items.every((item) => item.companyId === "cy-materials")).toBe(true);
   });
 
+  it("resolves evidence PDF page text from the repository boundary", async () => {
+    const items = await demoRepository.listEvidence("cy-materials", "success", 2025);
+    const page = await demoRepository.getEvidencePageText("cy-materials", items[0].id);
+    expect(page).toMatchObject({ evidenceId: items[0].id, companyId: "cy-materials", pageCount: 86 });
+    expect(page?.text).toBe(items[0].excerpt);
+    await expect(demoRepository.getEvidencePageText("cy-materials", "missing-evidence")).resolves.toBeNull();
+  });
+
   it("returns aspect-level Salience and AS records that reconcile to the company EASS", async () => {
     const company = await demoRepository.getCompany("cy-materials", "success", 2025);
     const aspects = await demoRepository.listEnvironmentalAspects("cy-materials", 2025);
@@ -90,6 +98,7 @@ describe("demoRepository", () => {
   it("returns a repository-aggregated Dashboard Command Center view model", async () => {
     const dashboard = await demoRepository.getDashboardCommandCenter("success", { year: 2025 });
     expect(dashboard.scope).toMatchObject({ reportYear: 2025, dataVersion: "SYN-2026.08" });
+    expect(dashboard.scope.availableReportYears).toEqual([2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016]);
     expect(dashboard.kpis.sampleCount).toBe(30);
     expect(dashboard.metricTriad.map((item) => item.code)).toEqual(["RHETORIC_CONTENT", "ACTION_SUBSTANCE", "AMBIGUITY_VERIFICATION"]);
     expect(dashboard.metricTriad.every((item) => item.sampleCount === 30)).toBe(true);
@@ -98,6 +107,10 @@ describe("demoRepository", () => {
     expect(dashboard.annualTrend).toHaveLength(10);
     expect(dashboard.industryRisk.length).toBeGreaterThan(0);
     expect(dashboard.quality).toHaveLength(10);
+
+    const historicalDashboard = await demoRepository.getDashboardCommandCenter("success", { year: 2020 });
+    expect(historicalDashboard.scope.availableReportYears).toContain(2025);
+    expect(historicalDashboard.scope.availableReportYears).toContain(2024);
   });
 
   it("keeps Dashboard Command Center filters inside the Repository boundary", async () => {

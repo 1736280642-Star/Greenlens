@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUpDown, Download, GitCompare
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analysisRepository } from "@/repositories";
-import { useDemoStore } from "@/stores/demo-store";
+import { useDemoStore, defaultYear } from "@/stores/demo-store";
 import { formatPercent, metricPercent, type CompanyYearRecord } from "@/types";
 
 export default function CompaniesPage() {
@@ -52,15 +52,15 @@ export default function CompaniesPage() {
 
   function exportCsv() {
     const rows = table.getFilteredRowModel().rows.map(({ original }) => [original.companyName, original.stockCode, original.industry, original.finalIndex ?? "", metricPercent(original,"EASS") ?? "", metricPercent(original,"IR") ?? "", metricPercent(original,"UPR") ?? "", original.evidenceCoverage]);
-    const content = [["演示数据，不代表任何真实主体"], ["公司", "虚构代码", "行业", "E-AA-ESGSI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
+    const content = [["风险结果仅作为待复核信号"], ["公司", "证券代码", "行业", "E-AA-ESGSI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\ufeff" + content], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "greenlens-companies-demo.csv"; anchor.click(); URL.revokeObjectURL(url);
-    notify("企业视图已导出", `导出 ${rows.length} 条合成记录。`); showToast("企业视图已导出");
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "greenlens-companies.csv"; anchor.click(); URL.revokeObjectURL(url);
+    notify("企业视图已导出", `导出 ${rows.length} 条当前数据记录。`); showToast("企业视图已导出");
   }
 
   if (loading) return <div className="page"><div className="skeleton skeleton-header"/><div className="panel skeleton-panel"/></div>;
   if (error) return <div className="state-panel"><AlertTriangle size={24}/><h2>企业数据载入失败</h2><p><strong>成因：</strong>{error}<br/><strong>影响：</strong>当前不能筛选、比较或导出公司记录。<br/><strong>下一步：</strong>检查 Repository 配置或后端状态后重试。</p><button className="primary-button" onClick={() => location.reload()}><RefreshCw size={15}/>重新载入</button></div>;
-  if (!data.length) return <div className="state-panel"><Search size={24}/><h2>当前筛选下没有公司记录</h2><p>当前报告年、行业或风险组合没有可分析的公司-年份样本。</p><button className="primary-button" onClick={() => setFilters({ year: 2025, industry: "全部行业", risk: "全部风险" })}><RefreshCw size={15}/>恢复默认视图</button></div>;
+  if (!data.length) return <div className="state-panel"><Search size={24}/><h2>当前筛选下没有公司记录</h2><p>当前报告年、行业或风险组合没有可分析的公司-年份样本。</p><button className="primary-button" onClick={() => setFilters({ year: defaultYear, industry: "全部行业", risk: "全部风险" })}><RefreshCw size={15}/>恢复默认视图</button></div>;
 
   return <div className="page companies-page">
     <header className="page-header"><div><h2>企业库</h2><p>按行动实质性、模糊声明、未验证计划和最终指数筛选合成公司。</p></div><div className="header-actions"><button className="secondary-button" onClick={() => setSaveOpen(true)}><Save size={15}/>保存视图</button><div className="column-settings"><button className="secondary-button" onClick={() => setColumnMenu(!columnMenu)} aria-expanded={columnMenu}><Settings2 size={15}/>列设置</button>{columnMenu && <div className="column-menu" role="dialog" aria-label="列设置"><strong>显示列</strong>{table.getAllLeafColumns().filter((column) => !["select", "companyName"].includes(column.id)).map((column) => <label key={column.id}><input type="checkbox" checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()}/><span>{String(column.columnDef.header)}</span></label>)}</div>}</div><button className="secondary-button" onClick={exportCsv}><Download size={15}/>导出</button></div></header>

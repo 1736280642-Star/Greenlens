@@ -1,4 +1,4 @@
-import type { CompanyMetricHistoryPoint, CompanyYearRecord, DashboardCommandCenterData, MetricCode, PanelYearSummary, RedFlagCode } from "@/types";
+import type { CompanyMetricHistoryPoint, CompanyYearRecord, DashboardCommandCenterData, DashboardRiskNode, MetricCode, PanelYearSummary, RedFlagCode, RiskBand } from "@/types";
 import { getMetric } from "@/types";
 import type { CompanyYearQuery } from "@/repositories/analysis-repository";
 
@@ -30,13 +30,36 @@ function historyMetric(point: CompanyMetricHistoryPoint, code: MetricCode, field
   return point.metrics[code]?.[field] ?? null;
 }
 
+const lightNodeLimitPerBand = 250;
+const lightNodeMaxTotal = 1000;
+
+function sampleRiskNodes(nodes: DashboardRiskNode[]): DashboardRiskNode[] {
+  const order = new Map(nodes.map((node, index) => [node, index]));
+  const picked: DashboardRiskNode[] = [];
+  for (const band of ["high", "medium", "low", "unavailable"] as RiskBand[]) {
+    const bandNodes = nodes.filter((node) => node.riskBand === band).slice(0, lightNodeLimitPerBand);
+    for (const node of bandNodes) {
+      if (picked.length < lightNodeMaxTotal) picked.push(node);
+    }
+  }
+  return picked
+    .slice(0, lightNodeMaxTotal)
+    .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
+    .map((node) => ({ ...node, history: undefined }));
+}
+
 export function buildDashboardCommandCenter(
   companyRecords: CompanyYearRecord[],
   historyRecords: CompanyMetricHistoryPoint[],
   qualityRecords: PanelYearSummary[],
   query: CompanyYearQuery = {},
+  options: { light?: boolean } = {},
 ): DashboardCommandCenterData {
   const reportYear = query.year ?? Math.max(...companyRecords.map((company) => company.reportYear), 2025);
+  const availableReportYears = [...new Set([
+    ...companyRecords.map((company) => company.reportYear),
+    ...historyRecords.map((point) => point.reportYear),
+  ])].filter((year) => year >= 2016).sort((a, b) => b - a);
   const companies = companyRecords.filter((company) =>
     company.reportYear === reportYear
     && (!query.industry || query.industry === "全部行业" || company.industry === query.industry)
@@ -136,6 +159,7 @@ export function buildDashboardCommandCenter(
         EAA_ESGSI: company.finalIndex,
       },
       persistentHighRiskYears,
+      indexBreakdown: company.indexBreakdown,
       history: latestThree.map((point) => ({ year: point.reportYear, finalIndex: point.finalIndex, riskBand: point.riskBand })),
     };
   });
@@ -180,9 +204,27 @@ export function buildDashboardCommandCenter(
     ? currentQuality.duplicateGroups + currentQuality.titleTargetYearNotFound + currentQuality.qualityFlaggedRows + currentQuality.codeRecoveredFromCompany
     : 0;
 
+  const medianBreakdown = {
+    baseEsgsi: median(companies.map((company) => company.indexBreakdown.baseEsgsiNormalized)),
+    actionPenalty: median(companies.map((company) => company.indexBreakdown.actionPenalty.contribution)),
+    indeterminatePenalty: median(companies.map((company) => company.indexBreakdown.indeterminatePenalty.contribution)),
+    planningPenalty: median(companies.map((company) => company.indexBreakdown.planningPenalty.contribution)),
+    evidenceAdjustment: median(companies.map((company) => company.indexBreakdown.evidenceAdjustment.contribution)),
+    final: median(companies.map((company) => company.finalIndex)),
+  };
+  const evidenceLinkageStatus = (company: CompanyYearRecord) => company.evidenceLinkageStatus
+    ?? (company.evidenceCoverage <= 0 ? "unlinked" : company.evidenceCoverage < 70 ? "low_coverage" : "linked");
+  const unlinkedEvidenceCount = companies.filter((company) => evidenceLinkageStatus(company) === "unlinked").length;
+  const evidenceParseFailedCount = companies.filter((company) => evidenceLinkageStatus(company) === "parse_failed").length;
+  const lowEvidenceCoverageCount = companies.filter((company) => evidenceLinkageStatus(company) === "low_coverage").length;
+  const sampledRiskNodes = options.light === true ? sampleRiskNodes(riskNodes) : riskNodes;
+  const sampledIds = new Set(sampledRiskNodes.map((node) => node.companyId));
+  const linkedRiskNodes = [...sampledRiskNodes, ...persistentRisks.filter((node) => !sampledIds.has(node.companyId))];
+
   return {
     scope: {
       reportYear,
+      availableReportYears: availableReportYears.length ? availableReportYears : [reportYear],
       industry: query.industry && query.industry !== "全部行业" ? query.industry : undefined,
       sampleGroup: query.sampleGroup,
       dataVersion: companies[0]?.versions.data ?? "SYN-2026.08",
@@ -194,14 +236,18 @@ export function buildDashboardCommandCenter(
       persistentHighRiskCount: allPersistentRisks.length,
       medianFinalIndex: median(companies.map((company) => company.finalIndex)),
       insufficientEvidenceCount: companies.filter((company) => company.evidenceStatus === "insufficient" || company.evidenceCoverage < 70).length,
+      unlinkedEvidenceCount,
+      evidenceParseFailedCount,
+      lowEvidenceCoverageCount,
       qualityAlertCount,
     },
     metricTriad,
-    riskNodes,
+    riskNodes: linkedRiskNodes,
     persistentRisks,
     annualTrend,
     industryRisk,
     redFlagDistribution: redFlagCodes.map((code) => ({ code, count: companies.filter((company) => company.riskClassification.redFlags.includes(code)).length })),
     quality: qualityRecords.filter((item) => item.year <= reportYear).sort((a, b) => a.year - b.year),
+    medianBreakdown,
   };
 }

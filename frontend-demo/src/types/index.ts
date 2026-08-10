@@ -122,6 +122,8 @@ export interface IndexBreakdown {
   actionPenalty: PenaltyTerm;
   indeterminatePenalty: PenaltyTerm;
   planningPenalty: PenaltyTerm;
+  /** Evidence-coverage based positive adjustment (waterfall "+Evidence Adjustment" step). */
+  evidenceAdjustment: PenaltyTerm;
   finalRaw: number | null;
   finalNormalized: number | null;
   normalizationVersion: string;
@@ -190,6 +192,18 @@ export interface EvidenceItem {
   status: EvidenceStatus;
 }
 
+/** Read-only PDF page reference produced from the server-side document store. */
+export interface EvidencePageReference {
+  evidenceId: string;
+  companyId: string;
+  reportYear: number;
+  documentId: string;
+  sourceLabel: string;
+  page: number;
+  pageCount: number;
+  text: string;
+}
+
 export interface CompanyYearRecord {
   id: string;
   reportId: string;
@@ -204,6 +218,7 @@ export interface CompanyYearRecord {
   riskBand: RiskBand;
   evidenceCoverage: number;
   evidenceStatus: EvidenceStatus;
+  evidenceLinkageStatus?: "linked" | "unlinked" | "parse_failed" | "low_coverage";
   reviewStatus: ReviewStatus;
   eventCount: number;
   textProcessing: TextProcessingMetrics;
@@ -263,6 +278,84 @@ export interface FinancialYearRecord {
     totalAssets: "A001000000";
   };
   qualityFlags: string[];
+}
+
+export interface CompanyScoreRecord {
+  id: string;
+  companyId: string;
+  stockCode: string;
+  companyName: string;
+  reportYear: number;
+  sourceLabel: string;
+  sourceFile: string;
+  sourceSheet: string;
+  sourceRow: number;
+  analysisScope: string;
+  sampleGroup: SampleGroup;
+  includeNGe10: boolean;
+  includeNGe20: boolean;
+  textLength: number;
+  nAllSentences: number;
+  nEnvironmentalSentences: number;
+  EASS: number | null;
+  IR: number | null;
+  UPR: number | null;
+  sentimentRaw: number | null;
+  sentimentNorm: number | null;
+  sustainabilityRaw: number | null;
+  sustainabilityNorm: number | null;
+  esgsiRaw: number | null;
+  esgsiNorm: number | null;
+  eaaEsiRaw: number | null;
+  eaaEsiNorm: number | null;
+  baseRisk: string;
+  flagHighEsgsi: boolean;
+  flagLowEass: boolean;
+  flagHighIr: boolean;
+  flagHighUpr: boolean;
+  redFlags: number;
+  riskLevel: string;
+  lowSentenceCountFlag: boolean;
+  recommendedUse: string;
+  yearsAvailable?: number;
+  firstYear?: number;
+  lastYear?: number;
+  duplicateCount: number;
+  selectedForPanel?: boolean;
+  selectionNote?: string;
+  qualityFlags: string[];
+  reportYearTextCheck?: string;
+  codeSource?: string;
+  ingestedAt: string;
+}
+
+export interface CompanyIndustryRecord {
+  id: string;
+  companyId: string;
+  stockCode: string;
+  reportYear: number;
+  industryCode: string;
+  industryName: string;
+  industryGroup: string;
+  source: string;
+  qualityFlag: "exact" | "backfilled" | "unclassified";
+}
+
+export interface EsgRatingRecord {
+  id: string;
+  companyId: string;
+  vendor: string;
+  stockCode: string;
+  companyName: string;
+  reportYear: number;
+  rating: string;
+  score: number | null;
+  eScore: number | null;
+  sScore: number | null;
+  gScore: number | null;
+  scoreScale: string;
+  sourceFile: string;
+  ingestedAt: string;
 }
 
 export interface ViolationEvent {
@@ -385,7 +478,10 @@ export interface DashboardRiskNode {
   redFlags: RedFlagCode[];
   metricRiskValues: Record<"ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESGSI", number | null>;
   persistentHighRiskYears: number;
-  history: DashboardRiskHistoryPoint[];
+  /** Per-company E-AA-ESGSI waterfall breakdown; preserved in light responses. */
+  indexBreakdown: IndexBreakdown;
+  /** Absent in light dashboard responses; persistent risk uses persistentHighRiskYears. */
+  history?: DashboardRiskHistoryPoint[];
 }
 
 export interface DashboardWatchItem extends DashboardRiskNode {
@@ -409,9 +505,22 @@ export interface DashboardIndustryRiskCell {
   q3: number | null;
 }
 
+/** Cohort median E-AA-ESGSI waterfall breakdown, used by the dashboard's
+ * "全部样本中位数" waterfall mode. Every step is null when the cohort
+ * has no usable ESGSI / penalty inputs. */
+export interface DashboardCohortBreakdown {
+  baseEsgsi: number | null;
+  actionPenalty: number | null;
+  indeterminatePenalty: number | null;
+  planningPenalty: number | null;
+  evidenceAdjustment: number | null;
+  final: number | null;
+}
+
 export interface DashboardCommandCenterData {
   scope: {
     reportYear: number;
+    availableReportYears: number[];
     industry?: string;
     sampleGroup?: SampleGroup;
     dataVersion: string;
@@ -423,6 +532,9 @@ export interface DashboardCommandCenterData {
     persistentHighRiskCount: number;
     medianFinalIndex: number | null;
     insufficientEvidenceCount: number;
+    unlinkedEvidenceCount: number;
+    evidenceParseFailedCount: number;
+    lowEvidenceCoverageCount: number;
     qualityAlertCount: number;
   };
   metricTriad: DashboardMetricTriad[];
@@ -432,6 +544,8 @@ export interface DashboardCommandCenterData {
   industryRisk: DashboardIndustryRiskCell[];
   redFlagDistribution: Array<{ code: RedFlagCode; count: number }>;
   quality: PanelYearSummary[];
+  /** Cohort-median waterfall steps for "全部样本中位数" mode. */
+  medianBreakdown: DashboardCohortBreakdown;
 }
 
 export interface AnalysisJob {
@@ -441,6 +555,105 @@ export interface AnalysisJob {
   phase: "collect" | "preprocess" | "extract" | "classify" | "calculate" | "risk";
   progress: number;
   resultCompanyId?: string;
+  error?: { cause: string; impact: string; nextAction: string };
+}
+
+export type SourceFileKind = "esg_report" | "financial_workbook" | "violation_workbook" | "company_score_workbook" | "company_industry_workbook" | "esg_rating_workbook" | "negative_news" | "archive" | "unknown";
+export type SourceFileParseStatus = "discovered" | "schema_pending" | "ready" | "unsupported" | "failed";
+
+/** Server-side file metadata only. Raw netdisk content must not be returned to the browser. */
+export interface SourceFileRecord {
+  id: string;
+  provider: "baidu_netdisk";
+  path: string;
+  filename: string;
+  fsid: string;
+  md5?: string;
+  size: number;
+  kind: SourceFileKind;
+  parseStatus: SourceFileParseStatus;
+  discoveredAt: string;
+  modifiedAt?: string;
+  detectedFields: string[];
+  qualityFlags: string[];
+}
+
+export type PdfDocumentKind = "esg_report" | "negative_news";
+export type PdfTextMode = "text" | "mixed" | "ocr_required";
+
+export interface PdfPageBlock {
+  page: number;
+  text: string;
+  textHash: string;
+}
+
+/** Server-side document payload produced from a read-only Netdisk byte stream. */
+export interface NetdiskPdfDocumentInput {
+  fsid: string;
+  filename: string;
+  size: number;
+  md5?: string;
+  kind: PdfDocumentKind;
+  pageCount: number;
+  textPageCount: number;
+  textCoverage: number;
+  textMode: PdfTextMode;
+  pages: PdfPageBlock[];
+}
+
+/** Operational metadata only. Page text remains in the server-side runtime snapshot. */
+export interface PdfDocumentRecord {
+  id: string;
+  provider: "baidu_netdisk";
+  fsid: string;
+  filename: string;
+  size: number;
+  md5?: string;
+  kind: PdfDocumentKind;
+  pageCount: number;
+  textPageCount: number;
+  textCoverage: number;
+  textMode: PdfTextMode;
+  stockCode?: string;
+  companyName?: string;
+  reportYear?: number;
+  publicationDate?: string;
+  parseStatus: "ready" | "schema_pending" | "failed";
+  qualityFlags: string[];
+  ingestedAt: string;
+}
+
+export interface SourceFieldCatalog {
+  sourceFileId: string;
+  sheetName?: string;
+  fields: Array<{
+    sourceField: string;
+    targetField?: string;
+    dataType: "string" | "number" | "date" | "boolean" | "unknown";
+    required: boolean;
+    status: "mapped" | "unmapped" | "invalid";
+  }>;
+}
+
+export interface DataSourceStatus {
+  provider: "baidu_netdisk";
+  rootPath: string;
+  connectionStatus: "connected" | "degraded" | "unavailable";
+  lastSyncedAt?: string;
+  fileCount: number;
+  readyFileCount: number;
+  schemaPendingFileCount: number;
+  message?: string;
+}
+
+export interface DataSourceSyncJob {
+  jobId: string;
+  provider: "baidu_netdisk";
+  status: "queued" | "running" | "completed" | "failed";
+  phase: "discover" | "inspect_schema" | "extract" | "normalize" | "index";
+  progress: number;
+  discoveredFileCount: number;
+  readyFileCount: number;
   error?: { cause: string; impact: string; nextAction: string };
 }
 
