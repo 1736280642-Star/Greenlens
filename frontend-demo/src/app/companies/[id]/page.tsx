@@ -29,7 +29,7 @@ export default function CompanyDetailPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const tab = (search.get("tab") ?? "overview") as Tab;
   const evidenceId = search.get("evidence");
-  const { toggleCompare, compareIds, openDrawer, selectCompany, selectEvidence, notify, showToast } = useDemoStore();
+  const { toggleCompare, compareIds, selectCompany, selectEvidence, notify, showToast } = useDemoStore();
 
   useEffect(() => {
     let active = true;
@@ -54,6 +54,12 @@ export default function CompanyDetailPage() {
 
   function setTab(next: Tab, evidence?: string) { const query = new URLSearchParams(search.toString()); query.set("tab", next); if (evidence) query.set("evidence", evidence); router.replace(`/companies/${id}?${query}`); }
   function openEvidence(evidence: string) { selectEvidence(evidence); setTab("evidence", evidence); }
+  function openReview(evidence?: string, assistant = false) {
+    const query = new URLSearchParams({ companyId: id, year: String(reportYear) });
+    if (evidence) query.set("evidence", evidence);
+    if (assistant) query.set("assistant", "open");
+    router.push(`/review?${query}`);
+  }
   async function openPdf(evidence: EvidenceItem) {
     if (!company || !evidence.page) return;
     setPdfLoading(true);
@@ -93,12 +99,12 @@ export default function CompanyDetailPage() {
   }
 
   return <div className="page company-detail-page">
-    <header className="company-header"><div className="breadcrumbs"><Link href="/companies">企业</Link><ChevronRight size={13}/><span>{company.companyName}</span></div><div className="company-title-row"><div><div className="company-title"><h2>{company.companyName}</h2><span className="demo-badge">LIVE DATA</span></div><p><code>{company.stockCode}</code> · {company.industry} · 报告年度 {company.reportYear}</p></div><div className="header-actions"><button className="secondary-button" onClick={() => { if (!toggleCompare(company.companyId)) showToast("最多同时比较 5 家"); }}><GitCompareArrows size={15}/>{compareIds.includes(company.companyId) ? "移出对比" : "加入对比"}</button><button className="secondary-button" onClick={exportSummary}><Download size={15}/>导出摘要</button><button className="primary-button" onClick={() => { selectEvidence(currentEvidence?.id ?? getMetric(company,"UPR")?.evidenceIds[0] ?? null); openDrawer("review"); }}><ShieldAlert size={15}/>发起复核</button><button className="icon-button" title="复制分析链接" aria-label="复制分析链接" onClick={() => { navigator.clipboard.writeText(location.href); showToast("分析链接已复制"); }}><MoreHorizontal/></button></div></div><div className="company-meta"><span>报告发布日 <code>{company.publishDate}</code></span><span>数据版本 <code>{company.versions.data}</code></span><span>评分版本 <code>{company.versions.model}</code></span><span>复核状态 <code>{company.reviewStatus}</code></span></div></header>
+    <header className="company-header"><div className="breadcrumbs"><Link href="/companies">企业</Link><ChevronRight size={13}/><span>{company.companyName}</span></div><div className="company-title-row"><div><div className="company-title"><h2>{company.companyName}</h2><span className="demo-badge">LIVE DATA</span></div><p><code>{company.stockCode}</code> · {company.industry} · 报告年度 {company.reportYear}</p></div><div className="header-actions"><button className="secondary-button" onClick={() => { if (!toggleCompare(company.companyId)) showToast("最多同时比较 5 家"); }}><GitCompareArrows size={15}/>{compareIds.includes(company.companyId) ? "移出对比" : "加入对比"}</button><button className="secondary-button" onClick={exportSummary}><Download size={15}/>导出摘要</button><button className="primary-button" onClick={() => openReview(currentEvidence?.id ?? getMetric(company,"UPR")?.evidenceIds[0])}><ShieldAlert size={15}/>发起复核</button><button className="icon-button" title="复制分析链接" aria-label="复制分析链接" onClick={() => { navigator.clipboard.writeText(location.href); showToast("分析链接已复制"); }}><MoreHorizontal/></button></div></div><div className="company-meta"><span>报告发布日 <code>{company.publishDate}</code></span><span>数据版本 <code>{company.versions.data}</code></span><span>评分版本 <code>{company.versions.model}</code></span><span>复核状态 <code>{company.reviewStatus}</code></span></div></header>
     <section className="risk-summary-band"><button><span>E-AA-ESGSI</span><strong className="risk-score">{formatPercent(company.finalIndex)}</strong><em>{company.riskBand==="high"?"高风险，建议优先复核":company.riskBand==="medium"?"中风险，建议核验":company.riskBand==="low"?"低风险信号":"暂不可评分，需补充输入"}</em></button><button><span>EASS</span><strong className="risk-score">{formatMetricPercent(company,"EASS")}</strong><em>越高表示行动越实质</em></button><button><span>IR / UPR</span><strong>{formatMetricPercent(company,"IR")} / {formatMetricPercent(company,"UPR")}</strong><em>模糊声明 / 未验证计划</em></button><button onClick={() => { const evidenceId=getMetric(company,"UPR")?.evidenceIds[0]; if(evidenceId) openEvidence(evidenceId); }}><span>主要原因</span><strong>未验证计划比例</strong><em>定位分子与证据 →</em></button></section>
     <nav className="tabs" aria-label="企业分析视图">{[["overview","总览"],["evidence","报告证据"],["facts","外部事实"],["ratings","评级分歧"],["history","历史变化"]].map(([key,label]) => <button className={tab === key ? "active" : ""} onClick={() => setTab(key as Tab)} key={key}>{label}</button>)}</nav>
     {tab === "overview" && <Overview company={company} onEvidence={openEvidence} />}
-    {tab === "evidence" && <LiveEvidenceView items={items} current={currentEvidence} onSelect={(item) => { selectEvidence(item.id); setTab("evidence", item.id); }} onAI={() => openDrawer("ai")} onReview={() => openDrawer("review")} onPdf={(item) => void openPdf(item)} />}
-    {tab === "facts" && <FactsView events={events} evidenceId={items.find((item) => item.type === "external")?.id} onReview={(evidence) => { selectEvidence(evidence); openDrawer("review"); }} />}
+    {tab === "evidence" && <LiveEvidenceView items={items} current={currentEvidence} onSelect={(item) => { selectEvidence(item.id); setTab("evidence", item.id); }} onAI={() => openReview(currentEvidence?.id, true)} onReview={() => openReview(currentEvidence?.id)} onPdf={(item) => void openPdf(item)} />}
+    {tab === "facts" && <FactsView events={events} evidenceId={items.find((item) => item.type === "external")?.id} onReview={(evidence) => openReview(evidence)} />}
     {tab === "ratings" && <LiveRatingsView ratings={ratings} reportYear={reportYear} />}
     {tab === "history" && <HistoryView company={company} history={history} />}
     {pdfOpen && <div className="modal-scrim"><section className="modal pdf-modal" role="dialog" aria-modal="true" aria-label="PDF 原文查看器"><header><div><FileText size={17}/><h3>{pdfRef?.sourceLabel ?? "PDF 原文"}</h3><code>第 {pdfPage} 页</code></div><button className="icon-button" onClick={() => setPdfOpen(false)} aria-label="关闭 PDF 查看器"><X/></button></header>{pdfRef && <div className="pdf-toolbar"><button className="secondary-button" disabled={pdfPage <= 1 || pdfLoading} onClick={() => void changePdfPage(pdfPage - 1)}>上一页</button><span>{pdfPage} / {pdfRef.pageCount}</span><button className="secondary-button" disabled={pdfPage >= pdfRef.pageCount || pdfLoading} onClick={() => void changePdfPage(pdfPage + 1)}>下一页</button></div>}<div className="pdf-page"><span>GREENLENS READ-ONLY SOURCE</span><h3>第 {pdfPage} 页</h3>{pdfLoading ? <p>正在载入原文…</p> : <p className="pdf-highlight">{pdfRef?.text || "当前页没有可展示的文本层。"}</p>}<small>{pdfPage}</small></div></section></div>}

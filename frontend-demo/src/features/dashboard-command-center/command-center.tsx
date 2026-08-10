@@ -48,7 +48,7 @@ export function DashboardCommandCenter() {
   const router = useRouter();
   const params = useSearchParams();
   const scenario = (params.get("scenario") ?? "success") as DemoScenario;
-  const { year, industry, risk, sampleGroup, selectedCompanyId, setFilters, selectCompany, toggleCompare, openDrawer, notify, showToast } = useDemoStore();
+  const { year, industry, risk, sampleGroup, selectedCompanyId, setFilters, selectCompany, toggleCompare, notify, showToast } = useDemoStore();
   const [data, setData] = useState<DashboardCommandCenterData | null>(null);
   const [fullConstellation, setFullConstellation] = useState<DashboardCommandCenterData | null>(null);
   const [selectedFactor, setSelectedFactor] = useState<DashboardTriadCode | null>(null);
@@ -157,7 +157,7 @@ export function DashboardCommandCenter() {
       <div className="command-center-toolbar-actions">
         <span className={`command-center-data-state ${data.kpis.qualityAlertCount ? "warning" : "ready"}`}><i/>{data.kpis.qualityAlertCount ? `${data.kpis.qualityAlertCount} 项质量提醒` : "数据就绪"}</span>
         <button className="cc-secondary-button" onClick={exportSnapshot}><Download size={15}/>导出快照</button>
-        <button className="cc-ai-button" onClick={() => openDrawer("ai")}><Sparkles size={16}/><span>唤醒绿镜</span></button>
+        <button className="cc-ai-button" onClick={() => { const query = new URLSearchParams({ assistant: "open", year: String(year) }); if (selectedCompanyId) query.set("companyId", selectedCompanyId); router.push(`/review?${query}`); }}><Sparkles size={16}/><span>唤醒绿镜</span></button>
       </div>
     </header>
 

@@ -21,16 +21,14 @@ async function expectCanvasPainted(canvas: ReturnType<Page["locator"]>) {
   expect(paintedPixels).toBeGreaterThan(20);
 }
 
-test("GreenLens Copilot uses one third of a wide desktop viewport", async ({ page }) => {
+test("GreenLens opens inside the review workspace with recoverable context", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto("/dashboard");
   await page.keyboard.press("Control+J");
 
-  const drawer = page.getByRole("dialog", { name: "绿镜 GreenLens Copilot" });
-  await expect(drawer).toBeVisible();
-  const drawerWidth = await drawer.evaluate((element) => element.getBoundingClientRect().width);
-
-  expect(drawerWidth).toBeCloseTo(640, 0);
+  await expect(page).toHaveURL(/\/review\?.*assistant=open/);
+  await expect(page.getByRole("heading", { name: "风险复核工作台", level: 2 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeVisible();
 });
 
 test("workflow A: dashboard to cited evidence and review", async ({ page }) => {
@@ -52,12 +50,12 @@ test("workflow A: dashboard to cited evidence and review", async ({ page }) => {
   await expect(page.locator(".cc-triad-panel")).toHaveClass(/has-company-selection/);
   await expect(page.locator(".cc-company-chip")).toContainText(selectedCompany);
   await page.keyboard.press("Control+J");
-  await expect(page.getByRole("dialog", { name: "绿镜 GreenLens Copilot" })).toBeVisible();
-  await page.getByRole("button", { name: /为什么风险高/ }).click();
-  await expect(page.getByText("ACTIVE TASK")).toBeVisible();
-  await page.getByRole("button", { name: "发起复核" }).last().click();
+  await expect(page).toHaveURL(/\/review\?.*assistant=open/);
+  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeVisible();
+  await page.getByRole("button", { name: /解释触发原因/ }).click();
+  await expect(page.getByRole("heading", { name: "证据推理链" })).toBeVisible();
   await page.getByRole("radio", { name: /证据不足/ }).check();
-  await page.getByRole("button", { name: "保存复核" }).click();
+  await page.getByRole("button", { name: /保存并下一条/ }).click();
   await expect(page.getByText("已保存复核结果", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -168,6 +166,24 @@ test("compare view and review undo remain interactive", async ({ page }) => {
   await page.getByRole("button", { name: "撤销" }).last().click();
   await expect(page.getByText("已撤销复核结果", { exact: true })).toBeVisible();
 });
+
+for (const viewport of [
+  { name: "review-1440", width: 1440, height: 900 },
+  { name: "review-1280", width: 1280, height: 800 },
+]) {
+  test(`review workspace stays actionable in one screen: ${viewport.name}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/review?assistant=open");
+    await expect(page.getByRole("heading", { name: "风险复核工作台", level: 2 })).toBeVisible();
+    await expect(page.getByRole("region", { name: "复核任务队列" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "证据推理链" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "人工复核决定" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /保存并下一条/ })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
+  });
+}
 
 test("company library paginates 30 records and applies column settings", async ({ page }) => {
   await page.goto("/companies");

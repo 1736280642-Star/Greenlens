@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 import { analysisRepositoryMode } from "@/repositories";
 import type { ReviewRecord, SampleGroup } from "@/types";
 
-type Drawer = "none" | "ai" | "review" | "notifications" | "command";
+type Drawer = "none" | "notifications" | "command";
 
 interface Notification {
   id: string;

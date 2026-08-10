@@ -20,7 +20,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useDemoStore } from "@/stores/demo-store";
 import { analysisRepositoryMode } from "@/repositories";
 import { GlobalLayers } from "@/components/global-layers";
@@ -40,7 +40,7 @@ const pageTitles: Record<string, string> = {
   companies: "企业库",
   compare: "对比分析",
   reports: "报告检测",
-  review: "复核中心",
+  review: "风险复核工作台",
   "data-sources": "数据源",
   methodology: "方法与模型",
 };
@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [industries, setIndustries] = useState<string[]>([]);
-  const [years, setYears] = useState<number[]>([]);
+  const [years, setYears] = useState<number[]>(analysisRepositoryMode === "mock" ? [2025, 2024] : []);
   const filtersReady = useSyncExternalStore(
     subscribeToStoreHydration,
     getStoreHydrationSnapshot,
@@ -87,20 +87,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => { if (active) setIndustries([]); });
     return () => { active = false; };
   }, []);
-  const { year, industry, risk, setFilters, openDrawer, notifications, reset, showToast } = useDemoStore();
+  const { year, industry, risk, setFilters, openDrawer, notifications, reset, showToast, selectedCompanyId, selectedReportYear, selectedEvidenceId } = useDemoStore();
+  const filtersInteractive = filtersReady || years.length > 0;
   const root = pathname.split("/")[1] || "dashboard";
   const title = root === "companies" && pathname.split("/").length > 2 ? "企业分析" : pageTitles[root];
+
+  const openGreenLens = useCallback(() => {
+    if (pathname.startsWith("/review")) {
+      const reviewQuery = new URLSearchParams(location.search);
+      reviewQuery.set("assistant", reviewQuery.get("assistant") === "closed" ? "open" : "closed");
+      router.push(`/review?${reviewQuery}`);
+      return;
+    }
+    const query = new URLSearchParams({ assistant: "open" });
+    if (selectedCompanyId) query.set("companyId", selectedCompanyId);
+    if (selectedReportYear) query.set("year", String(selectedReportYear));
+    if (selectedEvidenceId) query.set("evidence", selectedEvidenceId);
+    router.push(`/review?${query}`);
+  }, [pathname, router, selectedCompanyId, selectedEvidenceId, selectedReportYear]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         openDrawer("command");
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        openGreenLens();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openDrawer]);
+  }, [openDrawer, openGreenLens]);
 
   const activeHref = useMemo(() => nav.find((item) => pathname.startsWith(item.href))?.href, [pathname]);
 
@@ -160,18 +178,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="topbar-actions">
             <button className="command-trigger" onClick={() => openDrawer("command")}><Search size={16} /><span>搜索公司、页面或动作</span><kbd>Ctrl K</kbd></button>
             <span className="demo-badge" title={analysisRepositoryMode === "http" ? "数据来自只读网盘接入与 SQLite 聚合" : "当前使用可重复验收的合成数据"}>{analysisRepositoryMode === "http" ? "LIVE DATA" : "SYNTHETIC"}</span>
-            <button className="icon-button" onClick={() => openDrawer("ai")} aria-label="打开 AI 证据助手" title="AI 证据助手"><Sparkles /></button>
+            <button className="icon-button" onClick={openGreenLens} aria-label="打开绿镜复核助理" title="绿镜复核助理 · Ctrl J"><Sparkles /></button>
             <button className="icon-button notification-button" onClick={() => openDrawer("notifications")} aria-label="打开通知" title="通知">
               <Bell /><span>{notifications.length}</span>
             </button>
           </div>
         </header>
 
-        {root !== "dashboard" && root !== "data-sources" && <div className="context-bar" aria-label="全局筛选" aria-busy={!filtersReady}>
-          <label><span>报告年</span><select disabled={!filtersReady} value={year} onChange={(event) => setFilters({ year: Number(event.target.value) })}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label><span>行业</span><select disabled={!filtersReady} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label><span>风险</span><select disabled={!filtersReady} value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
-          {(industry !== "全部行业" || risk !== "全部风险" || year !== 2024) && <button className="text-button" disabled={!filtersReady} onClick={() => setFilters({ year: 2024, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
+        {root !== "dashboard" && root !== "data-sources" && <div className="context-bar" aria-label="全局筛选" aria-busy={!filtersInteractive}>
+          <label><span>报告年</span><select disabled={!filtersInteractive} value={year} onChange={(event) => setFilters({ year: Number(event.target.value) })}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>行业</span><select disabled={!filtersInteractive} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>风险</span><select disabled={!filtersInteractive} value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
+          {(industry !== "全部行业" || risk !== "全部风险" || year !== 2024) && <button className="text-button" disabled={!filtersInteractive} onClick={() => setFilters({ year: 2024, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
           <span className="context-count">后端样本 · 口径截至 {year}</span>
         </div>}
 

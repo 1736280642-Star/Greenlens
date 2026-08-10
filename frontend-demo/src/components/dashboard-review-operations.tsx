@@ -33,7 +33,7 @@ export function DashboardReviewOperations({ companies, insights, selectedFactor,
   const trendRef = useRef<HTMLDivElement>(null);
   const agreementRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const { selectCompany, selectEvidence, openDrawer, industry, risk } = useDemoStore();
+  const { selectCompany, industry, risk } = useDemoStore();
   const companyMap = useMemo(() => new Map(companies.map((company) => [company.companyId, company])), [companies]);
 
   const tasks = useMemo(() => insights.reviewTasks
@@ -96,9 +96,10 @@ export function DashboardReviewOperations({ companies, insights, selectedFactor,
   }, [compact, insights.modelAgreement]);
 
   function startReview(task: DashboardReviewTask) {
-    selectCompany(task.companyId, companyMap.get(task.companyId)?.reportYear);
-    selectEvidence(task.evidenceId);
-    openDrawer("review");
+    const company = companyMap.get(task.companyId);
+    const params = new URLSearchParams({ task: task.id, companyId: task.companyId, evidence: task.evidenceId, metric: task.metricCode, assistant: "open" });
+    if (company) params.set("year", String(company.reportYear));
+    location.assign(`/review?${params}`);
   }
 
   function openAllTasks() {
