@@ -89,6 +89,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
   const { year, industry, risk, setFilters, openDrawer, notifications, reset, showToast, selectedCompanyId, selectedReportYear, selectedEvidenceId } = useDemoStore();
   const filtersInteractive = filtersReady || years.length > 0;
+  useEffect(() => {
+    if (years.length && !years.includes(year)) setFilters({ year: years[0] });
+  }, [setFilters, year, years]);
   const root = pathname.split("/")[1] || "dashboard";
   const title = root === "companies" && pathname.split("/").length > 2 ? "企业分析" : pageTitles[root];
 
@@ -169,10 +172,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="workspace">
         <header className={`topbar ${root === "dashboard" ? "dashboard-topbar" : ""}`}>
-          <div className={`topbar-title ${root === "dashboard" ? "dashboard-identity" : ""}`}>
+          <div className={`topbar-title ${root === "dashboard" ? "dashboard-identity" : root === "review" ? "review-identity" : ""}`}>
             <button className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航" title="打开导航"><Menu /></button>
             {root === "dashboard"
               ? <div><h1>GreenLens</h1><span className="topbar-subtitle">风险分析终端 · 风险总览</span></div>
+              : root === "review"
+                ? <div><h1>GreenLens</h1><span className="topbar-subtitle">人工证据复核 · 风险信号工作台</span></div>
               : <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>}
           </div>
           <div className="topbar-actions">

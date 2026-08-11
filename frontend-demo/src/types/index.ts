@@ -394,6 +394,15 @@ export interface ReviewRecord {
   reviewedAt?: string;
 }
 
+export interface ReviewQueueAction {
+  id: string;
+  taskId: string;
+  companyId: string;
+  action: "skip";
+  reason?: string;
+  actedAt: string;
+}
+
 export interface DashboardReviewTask {
   id: string;
   companyId: string;

@@ -14,12 +14,13 @@ import {
   financialYearRecordSchema,
   panelYearSummarySchema,
   reviewRecordSchema,
+  reviewQueueActionSchema,
   sourceFieldCatalogSchema,
   sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
-import type { MetricCode, ReviewRecord, SourceFileRecord } from "@/types";
+import type { MetricCode, ReviewQueueAction, ReviewRecord, SourceFileRecord } from "@/types";
 
 export class HttpAnalysisRepository implements AnalysisRepository {
   constructor(private readonly baseUrl = "/api/v1", private readonly request: typeof fetch = (...args) => fetch(...args)) {}
@@ -102,6 +103,14 @@ export class HttpAnalysisRepository implements AnalysisRepository {
 
   async saveReview(review: ReviewRecord) {
     return reviewRecordSchema.parse(await this.json("/reviews", { method: "POST", body: JSON.stringify(review) }));
+  }
+
+  async listReviewQueueActions() {
+    return reviewQueueActionSchema.array().parse(await this.json("/review-queue-actions"));
+  }
+
+  async saveReviewQueueAction(action: ReviewQueueAction) {
+    return reviewQueueActionSchema.parse(await this.json("/review-queue-actions", { method: "POST", body: JSON.stringify(action) }));
   }
 
   async getBaiduNetdiskStatus() {

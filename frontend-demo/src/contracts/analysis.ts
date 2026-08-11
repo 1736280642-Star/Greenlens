@@ -367,6 +367,11 @@ export const reviewRecordSchema = z.object({
   reasonCode: z.string().optional(), note: z.string().optional(), reviewedAt: z.string().datetime({ offset: true }).optional(),
 });
 
+export const reviewQueueActionSchema = z.object({
+  id: z.string(), taskId: z.string(), companyId: z.string(), action: z.literal("skip"),
+  reason: z.string().optional(), actedAt: z.string().datetime({ offset: true }),
+});
+
 export const evidencePageReferenceSchema = z.object({
   evidenceId: z.string(),
   companyId: z.string(),

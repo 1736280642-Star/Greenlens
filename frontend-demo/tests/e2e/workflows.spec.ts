@@ -161,6 +161,7 @@ test("compare view and review undo remain interactive", async ({ page }) => {
   await page.getByRole("tab", { name: "行动构成" }).click();
   await expect(page.getByText("环境行动分类构成")).toBeVisible();
   await page.goto("/review");
+  await page.getByRole("radio", { name: "确认信号" }).check();
   await page.getByRole("button", { name: /保存并下一条/ }).click();
   await expect(page.getByText("已保存最近一条复核结果")).toBeVisible();
   await page.getByRole("button", { name: "撤销" }).last().click();
@@ -184,6 +185,29 @@ for (const viewport of [
     await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
   });
 }
+
+test("review decisions are explicit and closed GreenLens releases its column", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto("/review?assistant=closed");
+  const saveNext = page.getByRole("button", { name: /保存并下一条/ });
+  await expect(saveNext).toBeDisabled();
+  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeHidden();
+  const columns = await page.locator(".review-workspace-grid").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+  expect(columns).toBe(2);
+  await page.getByRole("radio", { name: "确认信号" }).check();
+  await expect(page.getByLabel("判断原因")).toHaveValue("原文支持当前信号");
+  await expect(saveNext).toBeEnabled();
+});
+
+test("skipped review tasks persist and remain recoverable", async ({ page }) => {
+  await page.goto("/review?assistant=closed");
+  await page.getByRole("button", { name: "跳过", exact: true }).click();
+  await expect(page.getByText("已持久化跳过状态，可在“已跳过”中继续处理", { exact: true })).toBeVisible();
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("greenlens-demo-review-queue-actions") ?? "[]") as Array<{ taskId: string }>);
+  expect(persisted.length).toBeGreaterThan(0);
+  await page.getByRole("button", { name: /已跳过/ }).click();
+  await expect(page.locator(".review-task-scroll .queue-state.skipped").first()).toHaveText("已跳过");
+});
 
 test("company library paginates 30 records and applies column settings", async ({ page }) => {
   await page.goto("/companies");

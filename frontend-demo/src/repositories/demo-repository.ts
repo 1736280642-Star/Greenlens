@@ -14,13 +14,14 @@ import {
   financialYearRecordSchema,
   panelYearSummarySchema,
   reviewRecordSchema,
+  reviewQueueActionSchema,
   sourceFieldCatalogSchema,
   sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import { buildDashboardCommandCenter } from "@/repositories/dashboard-command-center";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
-import type { AnalysisJob, DataSourceSyncJob, MetricCode, ReviewRecord, SourceFileRecord } from "@/types";
+import type { AnalysisJob, DataSourceSyncJob, MetricCode, ReviewQueueAction, ReviewRecord, SourceFileRecord } from "@/types";
 
 export type { DemoScenario } from "@/repositories/analysis-repository";
 
@@ -36,6 +37,8 @@ interface StoredAnalysisJob {
 }
 
 const jobs = new Map<string, StoredAnalysisJob>();
+const reviewQueueActions = new Map<string, ReviewQueueAction>();
+const reviewQueueActionStorageKey = "greenlens-demo-review-queue-actions";
 const sourceSyncJobs = new Map<string, DataSourceSyncJob>();
 const syntheticSourceFiles: SourceFileRecord[] = [
   {
@@ -189,6 +192,21 @@ export const demoRepository: AnalysisRepository = {
     return structuredClone(analysisJobSchema.parse(job));
   },
   async saveReview(review: ReviewRecord) { return structuredClone(reviewRecordSchema.parse(review)); },
+  async listReviewQueueActions() {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(reviewQueueActionStorageKey);
+      if (stored) {
+        for (const action of reviewQueueActionSchema.array().parse(JSON.parse(stored))) reviewQueueActions.set(action.taskId, action);
+      }
+    }
+    return structuredClone([...reviewQueueActions.values()]);
+  },
+  async saveReviewQueueAction(action: ReviewQueueAction) {
+    const parsed = reviewQueueActionSchema.parse(action);
+    reviewQueueActions.set(parsed.taskId, parsed);
+    if (typeof window !== "undefined") window.localStorage.setItem(reviewQueueActionStorageKey, JSON.stringify([...reviewQueueActions.values()]));
+    return structuredClone(parsed);
+  },
   async getBaiduNetdiskStatus() {
     return structuredClone(dataSourceStatusSchema.parse({
       provider: "baidu_netdisk", rootPath: "/greenwashing", connectionStatus: "connected", lastSyncedAt: "2026-08-03T00:00:00.000Z",

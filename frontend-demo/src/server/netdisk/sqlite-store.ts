@@ -1,7 +1,7 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { AnalysisJob, EnvironmentalAspectScore, EvidenceItem, EvidencePageReference, NetdiskPdfDocumentInput, PdfDocumentRecord, ReviewRecord } from "@/types";
+import type { AnalysisJob, EnvironmentalAspectScore, EvidenceItem, EvidencePageReference, NetdiskPdfDocumentInput, PdfDocumentRecord, ReviewQueueAction, ReviewRecord } from "@/types";
 import { alignReportYearToScores, inferPublicationDate, inferReportYear, normalizeCompanyId, normalizeStockCode } from "./identity";
 
 type JsonRecord = Record<string, unknown>;
@@ -75,6 +75,15 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_reviews_company ON reviews(company_id);
   CREATE INDEX IF NOT EXISTS idx_reviews_reviewed_at ON reviews(reviewed_at);
+  CREATE TABLE IF NOT EXISTS review_queue_actions (
+    task_id TEXT PRIMARY KEY,
+    id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    acted_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_review_queue_actions_acted_at ON review_queue_actions(acted_at);
   CREATE TABLE IF NOT EXISTS analysis_jobs (
     job_id TEXT PRIMARY KEY,
     report_id TEXT NOT NULL,
@@ -412,6 +421,24 @@ export function listReviewRecords(options: { targetType?: ReviewRecord["targetTy
   if (options.companyId) { conditions.push("company_id=?"); params.push(options.companyId); }
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
   return database.prepare(`SELECT payload FROM reviews${where} ORDER BY reviewed_at DESC`).all(...params).map((row) => parse<ReviewRecord>(row.payload));
+}
+
+export function saveReviewQueueAction(action: ReviewQueueAction): ReviewQueueAction {
+  database.prepare(`
+    INSERT INTO review_queue_actions(task_id,id,company_id,action,acted_at,payload)
+    VALUES(?,?,?,?,?,?)
+    ON CONFLICT(task_id) DO UPDATE SET
+      id=excluded.id,
+      company_id=excluded.company_id,
+      action=excluded.action,
+      acted_at=excluded.acted_at,
+      payload=excluded.payload
+  `).run(action.taskId, action.id, action.companyId, action.action, action.actedAt, JSON.stringify(action));
+  return action;
+}
+
+export function listReviewQueueActions(): ReviewQueueAction[] {
+  return database.prepare("SELECT payload FROM review_queue_actions ORDER BY acted_at DESC").all().map((row) => parse<ReviewQueueAction>(row.payload));
 }
 
 export function createAnalysisJobRecord(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }): AnalysisJob {

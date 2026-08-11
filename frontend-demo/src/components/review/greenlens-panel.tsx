@@ -14,6 +14,7 @@ interface Props {
   evidence?: EvidenceItem;
   externalEvidence?: EvidenceItem;
   previousCompany?: CompanyYearRecord;
+  contextState: { tone: "loading" | "critical" | "warning" | "ready"; label: string };
   onClose: () => void;
   onCitation: (id: string) => void;
 }
@@ -25,7 +26,7 @@ const actions = [
   { id: "compare" as const, label: "与上年比较", icon: GitCompareArrows },
 ];
 
-export function GreenLensPanel({ open, company, task, metric, evidence, externalEvidence, previousCompany, onClose, onCitation }: Props) {
+export function GreenLensPanel({ open, company, task, metric, evidence, externalEvidence, previousCompany, contextState, onClose, onCitation }: Props) {
   const [action, setAction] = useState<LensAction>("explain");
   const previousMetric = previousCompany?.metrics.find((item) => item.code === task.metricCode);
   return <aside className={`review-greenlens ${open ? "open" : ""}`} aria-label="绿镜复核助理" aria-hidden={!open}>
@@ -38,7 +39,7 @@ export function GreenLensPanel({ open, company, task, metric, evidence, external
       {action === "gaps" ? <><LensLabel tone="unknown">未知</LensLabel><h4>当前证据仍需人工确认</h4><ul><li>报告原文是否属于同一公司与报告年度</li><li>规划性声明是否包含负责人、预算和实施期限</li><li>外部事件是否属于同一经营主体</li><li>证据覆盖率 {company.evidenceCoverage}% 是否足以支持决定</li></ul></> : null}
       {action === "compare" ? <><LensLabel tone="inference">比较</LensLabel><h4>{previousCompany ? `${previousCompany.reportYear} → ${company.reportYear}` : "没有可比历史记录"}</h4>{previousCompany && previousMetric?.riskValue != null ? <p>{metricLabel(task.metricCode)}风险方向值由 <strong>{Math.round(previousMetric.riskValue * 100)}%</strong> 变为 <strong>{Math.round(task.metricValue * 100)}%</strong>，变化 <strong>{Math.round((task.metricValue - previousMetric.riskValue) * 100)}pp</strong>。比较只说明指标变化，不代表企业行为结论。</p> : <Unavailable text="当前Repository没有返回同口径上一年度指标，不能自动生成跨年判断。"/>}</> : null}
     </div>
-    <footer><span><i/>证据上下文已就绪</span><small>绿镜建议不替代人工判断</small></footer>
+    <footer className={`context-${contextState.tone}`}><span><i/>{contextState.label}</span><small>绿镜建议不替代人工判断</small></footer>
   </aside>;
 }
 

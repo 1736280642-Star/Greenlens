@@ -14,6 +14,7 @@ import type {
   MetricCode,
   PanelYearSummary,
   ReviewRecord,
+  ReviewQueueAction,
   SourceFieldCatalog,
   SourceFileRecord,
   SampleGroup,
@@ -48,6 +49,8 @@ export interface AnalysisRepository {
   createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }): Promise<AnalysisJob>;
   getAnalysisJob(jobId: string): Promise<AnalysisJob>;
   saveReview(review: ReviewRecord): Promise<ReviewRecord>;
+  listReviewQueueActions(): Promise<ReviewQueueAction[]>;
+  saveReviewQueueAction(action: ReviewQueueAction): Promise<ReviewQueueAction>;
   getBaiduNetdiskStatus(): Promise<DataSourceStatus>;
   listBaiduNetdiskFiles(options?: { path?: string; kind?: SourceFileRecord["kind"]; parseStatus?: SourceFileRecord["parseStatus"] }): Promise<SourceFileRecord[]>;
   getBaiduNetdiskFieldCatalog(sourceFileId: string): Promise<SourceFieldCatalog>;

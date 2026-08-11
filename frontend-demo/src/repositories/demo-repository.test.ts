@@ -33,6 +33,12 @@ describe("demoRepository", () => {
     await expect(demoRepository.getEvidencePageText("cy-materials", "missing-evidence")).resolves.toBeNull();
   });
 
+  it("persists skipped review queue actions through the repository boundary", async () => {
+    const action = { id: "skip-test-task", taskId: "test-task", companyId: "cy-materials", action: "skip" as const, actedAt: new Date().toISOString() };
+    await expect(demoRepository.saveReviewQueueAction(action)).resolves.toEqual(action);
+    await expect(demoRepository.listReviewQueueActions()).resolves.toContainEqual(action);
+  });
+
   it("returns aspect-level Salience and AS records that reconcile to the company EASS", async () => {
     const company = await demoRepository.getCompany("cy-materials", "success", 2025);
     const aspects = await demoRepository.listEnvironmentalAspects("cy-materials", 2025);
