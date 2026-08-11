@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Database, FileSpreadsheet, FileText, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { analysisRepositoryMode } from "@/repositories";
 
@@ -47,7 +48,7 @@ export default function DataSourcesPage() {
   const violationFiles = files.filter((file) => file.kind === "violation_workbook").length;
 
   return <div className="page source-page">
-    <header className="page-header source-header"><div><span className="section-kicker">READ-ONLY PIPELINE</span><h2>百度网盘数据接入</h2><p>网盘文件只在内存中解析；后端保存规范化记录、字段目录与任务日志。</p></div><button className="secondary-button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/>{loading ? "读取中" : "刷新状态"}</button></header>
+    <header className="page-header source-header"><div><span className="section-kicker">READ-ONLY PIPELINE</span><h2>百度网盘数据接入</h2><p>网盘文件只在内存中解析；后端保存规范化记录、字段目录与任务日志。</p></div><div className="header-actions"><Link className="secondary-button" href="/data-sources/review"><AlertTriangle size={15}/>异常与质量处置</Link><button className="secondary-button" onClick={() => void load()} disabled={loading}><RefreshCw size={15}/>{loading ? "读取中" : "刷新状态"}</button></div></header>
     {error && <div className="source-alert"><AlertTriangle size={17}/><span><strong>状态读取失败</strong>{error}，请确认本地后端仍在运行。</span></div>}
     <section className="source-status-band" aria-busy={loading}>
       <div className="source-connection"><span className={`source-pulse ${status?.connectionStatus ?? "unavailable"}`}/><div><small>连接状态</small><strong>{status?.connectionStatus === "connected" ? "已连接" : status?.connectionStatus === "degraded" ? "部分可用" : "不可用"}</strong></div></div>
@@ -61,6 +62,6 @@ export default function DataSourcesPage() {
       <article><FileSpreadsheet size={20}/><div><span>外部 ESG 评级记录</span><strong>{summary.esgRatingRecordCount.toLocaleString()}</strong><small>{summary.esgRatingVendorCount} 家数据源 · {summary.esgRatingSourceFileCount} 份评级工作簿</small></div></article>
       <article><FileText size={20}/><div><span>PDF 证据记录</span><strong>{summary.documentEvidenceCount.toLocaleString()}</strong><small>{summary.pdfDocumentCount} 份文档 · 队列 {queue.counts.queued ?? 0} · 处理中 {queue.counts.running ?? 0} · 完成 {queue.counts.completed ?? 0} · 失败 {queue.counts.failed ?? 0}</small></div></article>
     </section>
-    <section className="panel source-quality"><header className="panel-header"><div><h3>发布质量</h3><p>当前后端规范化快照</p></div>{status?.schemaPendingFileCount === 0 ? <span className="source-ok"><CheckCircle2 size={15}/>工作簿已映射</span> : <span className="source-warn"><AlertTriangle size={15}/>{status?.schemaPendingFileCount} 份工作簿待映射</span>}</header><div className="panel-body"><div className="quality-meter"><span style={{ width: `${status?.fileCount ? status.readyFileCount / status.fileCount * 100 : 0}%` }}/></div><p>{analysisRepositoryMode === "http" ? "业务页正在读取后端规范化记录；风险结果仅作为待复核信号，证据不足不会被解释为低风险。OCR 文档和失败任务继续作为独立质量问题展示。" : "当前业务页使用合成样本进行可重复验收，不代表任何真实主体。"}</p></div></section>
+    <section className="panel source-quality"><header className="panel-header"><div><h3>发布质量</h3><p>当前后端规范化快照</p></div>{status?.schemaPendingFileCount === 0 ? <span className="source-ok"><CheckCircle2 size={15}/>工作簿已映射</span> : <span className="source-warn"><AlertTriangle size={15}/>{status?.schemaPendingFileCount} 份工作簿待映射</span>}</header><div className="panel-body"><div className="quality-meter"><span style={{ width: `${status?.fileCount ? status.readyFileCount / status.fileCount * 100 : 0}%` }}/></div><p>{analysisRepositoryMode === "http" ? "业务页正在读取后端规范化记录；AI 自动组织风险解释与引用，解析、关联和低置信度异常进入独立质量处置。证据不足不会被解释为低风险。" : "当前业务页使用合成样本进行可重复验收，不代表任何真实主体。"}</p></div></section>
   </div>;
 }

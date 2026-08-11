@@ -2,7 +2,7 @@
 
 ## Outcome
 
-GreenLens is a desktop-first evidence investigation workspace for ESG researchers. Its single job is to help a reviewer move from an anomalous company signal to cited evidence and a recorded human decision.
+GreenLens is a desktop-first ESG risk interpretation workspace. Its primary job is to turn a company-year risk signal into a structured, cited and uncertainty-aware research brief; researchers interpret the business context and decide how the result may be used. Routine signal-by-signal review is automated, while human handling is reserved for data-quality exceptions and final research judgment.
 
 ## Token system
 
@@ -10,7 +10,9 @@ GreenLens is a desktop-first evidence investigation workspace for ESG researcher
 - Raised surface: `#0C1110`
 - Primary text: `#F4F7F5`
 - Secondary text: `#A7B0AC`
-- Action and verified: `#38E07B`
+- Selection and citation: `#27D7E5`
+- Automatic interpretation: `#9A7AF5`
+- Brand and verified: `#38D996`
 - Data spectrum: cyan `#30D5E8`, blue `#5B8CFF`, yellow `#F4D35E`, orange `#FF9F43`, red `#FF5C6C`, magenta `#E879F9`
 - UI type: Inter, Noto Sans SC, system sans-serif
 - Data type: IBM Plex Mono, JetBrains Mono, monospace
@@ -46,10 +48,14 @@ At 1024px the sidebar collapses. Below 768px navigation moves to the top; the Da
 
 ## Signature
 
-The EASS-by-E-AA-ESGSI quadrant is the only expressive motion surface. Selecting a point dims the field and exposes the selected company's metric ledger. This links action substance to the final risk signal without turning the interface into a game-like HUD.
+The EASS-by-E-AA-ESGSI quadrant is the Dashboard's expressive motion surface. Selecting a point opens the same company-year context in AI Risk Interpretation.
+
+The interpretation page's signature is the evidence ledger: each automatic finding is paired directly with a real report excerpt, page reference or external fact. Violet identifies generated interpretation, cyan identifies selection and citation, and risk colors remain limited to Aqua, Amber and Coral. Missing evidence is shown as unknown rather than filled with generated confidence.
+
+`/review` remains the compatible entry URL for AI Risk Interpretation. Manual exception handling lives at `/data-sources/review` and only receives parsing, linkage, year, coverage, dispute or low-confidence anomalies.
 
 The Dashboard deliberately uses a dense audit-console layout: compact KPI strip, three-column first row, three-column diagnostic row, and short chart headers. Density comes from shared axes, consistent risk direction, and aligned rows rather than smaller unreadable type.
 
 ## Design critique
 
-The dark/green contrast and disciplined accent use fit the product, while marketing typography, universal pills, large-radius cards, and generous landing-page whitespace do not. The audit-console structure is specific to evidence review: high information density on desktop, then a single-column evidence workflow below 1024px.
+The neutral dark-teal shell and disciplined accent roles fit the product, while a green-tinted interface, marketing typography, universal pills, large-radius cards, and generous landing-page whitespace do not. The interpretation layout keeps company prioritization separate from the research narrative, then becomes a single-column evidence flow below 1000px.

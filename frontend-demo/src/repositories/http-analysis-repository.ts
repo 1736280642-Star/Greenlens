@@ -15,12 +15,13 @@ import {
   panelYearSummarySchema,
   reviewRecordSchema,
   reviewQueueActionSchema,
+  riskInterpretationSchema,
   sourceFieldCatalogSchema,
   sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
-import type { MetricCode, ReviewQueueAction, ReviewRecord, SourceFileRecord } from "@/types";
+import type { MetricCode, ReviewQueueAction, ReviewRecord, RiskInterpretationFocus, SourceFileRecord } from "@/types";
 
 export class HttpAnalysisRepository implements AnalysisRepository {
   constructor(private readonly baseUrl = "/api/v1", private readonly request: typeof fetch = (...args) => fetch(...args)) {}
@@ -92,6 +93,11 @@ export class HttpAnalysisRepository implements AnalysisRepository {
   }
 
   async getDashboardInsights() { return dashboardInsightsSchema.parse(await this.json("/dashboard/insights")); }
+
+  async getRiskInterpretation(companyId: string, reportYear: number, focus: RiskInterpretationFocus = "overview") {
+    const params = new URLSearchParams({ reportYear: String(reportYear), focus });
+    return riskInterpretationSchema.parse(await this.json(`/company-years/${encodeURIComponent(companyId)}/interpretation?${params}`));
+  }
 
   async createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }) {
     return analysisJobSchema.parse(await this.json("/analysis-jobs", { method: "POST", body: JSON.stringify(input) }));

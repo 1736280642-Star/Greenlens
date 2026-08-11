@@ -9,7 +9,7 @@ These rules apply to the entire `frontend-demo` project.
 - Follow `../../docs/frontend_demo_design_spec.md` as the authoritative product and UX specification.
 - For `/dashboard`, follow `docs/dashboard-product-requirements-v2.md` when it is more specific than the general design specification.
 - Production-like local runs use normalized backend records through `src/repositories`; deterministic tests explicitly use synthetic fixtures.
-- Always present risk as a signal requiring review, never as a confirmed greenwashing judgment.
+- Present risk as a research signal for automatic AI interpretation, never as a confirmed greenwashing judgment. Human action is reserved for final research judgment and data-quality exceptions, not routine signal-by-signal review.
 - Keep the complete desktop investigation workflow and a deliberately reduced mobile workflow.
 
 ## Engineering Contract

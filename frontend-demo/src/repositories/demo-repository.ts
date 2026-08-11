@@ -15,11 +15,13 @@ import {
   panelYearSummarySchema,
   reviewRecordSchema,
   reviewQueueActionSchema,
+  riskInterpretationSchema,
   sourceFieldCatalogSchema,
   sourceFileRecordSchema,
   violationEventSchema,
 } from "@/contracts/analysis";
 import { buildDashboardCommandCenter } from "@/repositories/dashboard-command-center";
+import { buildRiskInterpretation } from "@/lib/risk-interpretation";
 import type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
 import type { AnalysisJob, DataSourceSyncJob, MetricCode, ReviewQueueAction, ReviewRecord, SourceFileRecord } from "@/types";
 
@@ -178,6 +180,18 @@ export const demoRepository: AnalysisRepository = {
   async getDashboardInsights(scenario: DemoScenario = "success") {
     await wait(scenario);
     return structuredClone(scenario === "empty" ? { reviewTasks: [], reviewTrend: [], modelAgreement: [], sourceFreshness: [], evidenceCoverage: [] } : validatedDashboardInsights);
+  },
+  async getRiskInterpretation(companyId, reportYear, focus = "overview") {
+    const company = validatedCompanies.find((item) => item.companyId === companyId && item.reportYear === reportYear);
+    if (!company) throw new Error(`未找到 ${companyId} 的 ${reportYear} 年公司记录。`);
+    const result = buildRiskInterpretation({
+      company,
+      cohort: validatedCompanies.filter((item) => item.reportYear === reportYear),
+      evidence: validatedEvidence.filter((item) => item.companyId === companyId && item.reportYear === reportYear),
+      history: validatedHistory.filter((item) => item.companyId === companyId),
+      focus,
+    });
+    return structuredClone(riskInterpretationSchema.parse(result));
   },
   async createAnalysisJob(input) {
     const job: AnalysisJob = { jobId: crypto.randomUUID(), reportId: `report-${Date.now()}`, status: "queued", phase: "collect", progress: 0, resultCompanyId: input.companyId };

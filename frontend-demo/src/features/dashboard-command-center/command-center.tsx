@@ -95,7 +95,7 @@ export function DashboardCommandCenter() {
   function exportSnapshot() {
     if (!data) return;
     const content = [
-      `数据版本：${data.scope.dataVersion}。风险结果仅作为待复核信号。`,
+      `数据版本：${data.scope.dataVersion}。风险结果用于研究筛查，不构成企业漂绿认定。`,
       "",
       "GreenLens Dashboard Command Center",
       `Metric contract: metric-contract-v2`,
@@ -157,7 +157,7 @@ export function DashboardCommandCenter() {
       <div className="command-center-toolbar-actions">
         <span className={`command-center-data-state ${data.kpis.qualityAlertCount ? "warning" : "ready"}`}><i/>{data.kpis.qualityAlertCount ? `${data.kpis.qualityAlertCount} 项质量提醒` : "数据就绪"}</span>
         <button className="cc-secondary-button" onClick={exportSnapshot}><Download size={15}/>导出快照</button>
-        <button className="cc-ai-button" onClick={() => { const query = new URLSearchParams({ assistant: "open", year: String(year) }); if (selectedCompanyId) query.set("companyId", selectedCompanyId); router.push(`/review?${query}`); }}><Sparkles size={16}/><span>唤醒绿镜</span></button>
+        <button className="cc-ai-button" onClick={() => { const query = new URLSearchParams({ view: "overview", year: String(year) }); if (selectedCompanyId) query.set("companyId", selectedCompanyId); router.push(`/review?${query}`); }}><Sparkles size={16}/><span>打开 AI 解读</span></button>
       </div>
     </header>
 
@@ -193,7 +193,7 @@ export function DashboardCommandCenter() {
       <span className="cc-status-sep" aria-hidden="true">·</span>
       <span className="cc-status-source">数据来源：Holographic Evidence Observatory</span>
       <span className="cc-status-sep" aria-hidden="true">·</span>
-      <span>风险仅为待复核信号</span>
+      <span>AI 自动组织解释与证据，风险结果不构成企业漂绿认定</span>
     </footer>
     <DashboardDetailDialog open={expandedPanel != null} onOpenChange={(open) => { if (!open) setExpandedPanel(null); }} title={expandedPanel ? `${expandedPanelTitles[expandedPanel]}完整视图` : "模块完整视图"} description="查看当前 Dashboard 模块的完整数据与交互" returnFocusRef={expandedTrigger}>{renderExpandedPanel()}</DashboardDetailDialog>
   </div>;

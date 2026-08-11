@@ -15,6 +15,8 @@ import type {
   PanelYearSummary,
   ReviewRecord,
   ReviewQueueAction,
+  RiskInterpretation,
+  RiskInterpretationFocus,
   SourceFieldCatalog,
   SourceFileRecord,
   SampleGroup,
@@ -46,6 +48,7 @@ export interface AnalysisRepository {
   listPanelYearSummaries(options?: { fromYear?: number; toYear?: number }): Promise<PanelYearSummary[]>;
   getDashboardCommandCenter(scenario?: DemoScenario, query?: CompanyYearQuery): Promise<DashboardCommandCenterData>;
   getDashboardInsights(scenario?: DemoScenario): Promise<DashboardInsights>;
+  getRiskInterpretation(companyId: string, reportYear: number, focus?: RiskInterpretationFocus): Promise<RiskInterpretation>;
   createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }): Promise<AnalysisJob>;
   getAnalysisJob(jobId: string): Promise<AnalysisJob>;
   saveReview(review: ReviewRecord): Promise<ReviewRecord>;

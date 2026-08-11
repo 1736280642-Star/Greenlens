@@ -26,7 +26,7 @@ const reasonsByDecision: Record<Decision, string[]> = {
   insufficient: ["证据尚未关联", "证据解析失败", "缺少原文定位", "证据覆盖率不足", "缺少外部验证", "其他"],
 };
 
-export function ReviewWorkspace() {
+export function ReviewWorkspace({ mode = "review" }: { mode?: "review" | "quality" }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -90,9 +90,17 @@ export function ReviewWorkspace() {
     const riskBands: Record<string, CompanyYearRecord["riskBand"]> = { "高风险": "high", "中风险": "medium", "低风险": "low", "暂不可评分": "unavailable" };
     return queue.filter((task) => {
       const company = resolveCompany(companyGroups, task.companyId, requestedYear);
-      return company && (!industry || company.industry === industry) && (!risk || company.riskBand === riskBands[risk]) && (!factor || task.metricCode === factor);
+      const qualityException = company && (
+        company.evidenceLinkageStatus === "parse_failed"
+        || company.evidenceLinkageStatus === "unlinked"
+        || company.evidenceLinkageStatus === "low_coverage"
+        || task.evidenceStatus === "insufficient"
+        || task.evidenceStatus === "disputed"
+        || task.uncertainty >= 70
+      );
+      return company && (mode !== "quality" || qualityException) && (!industry || company.industry === industry) && (!risk || company.riskBand === riskBands[risk]) && (!factor || task.metricCode === factor);
     });
-  }, [companyGroups, params, queue, requestedYear]);
+  }, [companyGroups, mode, params, queue, requestedYear]);
 
   const visible = useMemo(() => scopedQueue.filter((task) => {
     const company = resolveCompany(companyGroups, task.companyId, requestedYear);
@@ -213,8 +221,8 @@ export function ReviewWorkspace() {
 
   if (loading) return <div className="page"><div className="skeleton skeleton-header"/><div className="panel skeleton-panel"/></div>;
   if (error) return <StatePanel title="复核队列载入失败" detail={`成因：${error}。影响：当前无法处理人工判断。下一步：检查数据接口后重新载入页面。`} action="重新载入" onAction={() => location.reload()}/>;
-  if (!scopedQueue.length) return <StatePanel title={`${requestedYear} 年没有可复核记录`} detail="系统没有自动切换到其他年度，以避免报告年度与证据错配。请在顶部选择存在记录的报告年度。" action="返回复核首页" onAction={() => location.assign("/review")}/>;
-  if (!current || !company) return <StatePanel title="当前筛选下没有任务" detail="当前任务状态、复核类型或搜索条件没有匹配项。调整筛选后即可继续。" action="清除任务筛选" onAction={() => location.assign(`/review?year=${requestedYear}`)}/>;
+  if (!scopedQueue.length) return <StatePanel title={`${requestedYear} 年没有需要人工处置的质量异常`} detail="当前没有解析、关联、年份或低置信度异常；高风险信号本身不会产生人工任务。" action="返回数据源" onAction={() => location.assign("/data-sources")}/>;
+  if (!current || !company) return <StatePanel title="当前筛选下没有异常记录" detail="调整状态、异常类型或搜索条件后继续。" action="清除筛选" onAction={() => location.assign(`/data-sources/review?year=${requestedYear}`)}/>;
 
   const completedCount = scopedQueue.filter((task) => isDone(task, completedIds)).length;
   const skippedCount = scopedQueue.filter((task) => !isDone(task, completedIds) && skippedIds.has(task.id)).length;
@@ -222,7 +230,7 @@ export function ReviewWorkspace() {
   const contextState = getContextState(company, primaryEvidence, evidenceLoading, evidenceError);
   return <div className={`page review-page review-workspace-page ${assistantOpen ? "assistant-open" : "assistant-closed"}`}>
     <header className="review-commandbar">
-      <div className="review-heading"><span className="section-kicker">REVIEW DESK · HUMAN IN THE LOOP</span><h2>风险复核工作台</h2><p>核对原文与外部事实，保存可追溯的人工结论。</p></div>
+      <div className="review-heading"><span className="section-kicker">DATA QUALITY · EXCEPTIONS ONLY</span><h2>异常与质量处置</h2><p>只处理解析、关联、年份和低置信度异常；风险高低不直接产生人工任务。</p></div>
       <div className="session-stats" aria-label="当前范围统计"><span>当前范围已完成<strong>{completedCount}</strong></span><span>持久化跳过<strong>{skippedCount}</strong></span><span>当前范围待处理<strong>{pendingCount}</strong></span></div>
       <label className="review-search"><Search size={15}/><input value={localQuery} onChange={(event) => setLocalQuery(event.target.value)} placeholder="搜索公司、代码或触发原因"/></label>
       <label className="review-select"><Filter size={14}/><span>证据</span><select value={evidenceState} onChange={(event) => update({ evidenceState: event.target.value === "all" ? null : event.target.value, task: null })}><option value="all">全部状态</option><option value="pending">待复核</option><option value="insufficient">证据不足</option><option value="disputed">存在争议</option><option value="verified">已验证</option></select></label>

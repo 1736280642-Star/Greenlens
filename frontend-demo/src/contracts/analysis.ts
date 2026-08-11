@@ -360,9 +360,39 @@ export const dashboardInsightsSchema = z.object({
   evidenceCoverage: z.array(z.object({ label: z.string(), coverage: z.number() })),
 });
 
+export const riskInterpretationFocusSchema = z.enum(["overview", "drivers", "evidence", "history", "industry"]);
+
+export const riskInterpretationSchema = z.object({
+  id: z.string(), companyId: z.string(), companyName: z.string(), reportYear: z.number().int(),
+  generatedAt: z.string().datetime({ offset: true }), focus: riskInterpretationFocusSchema,
+  headline: z.string(), summary: z.string(), riskBand: riskBandSchema,
+  finalIndex: z.number().min(0).max(1).nullable(), evidenceCoverage: z.number().min(0).max(100),
+  drivers: z.array(z.object({
+    metricCode: metricCodeSchema, label: z.string(), riskValue: z.number().min(0).max(1).nullable(),
+    threshold: z.number().min(0).max(1).optional(), contribution: z.number().optional(),
+    status: z.enum(["attention", "watch", "unavailable"]), explanation: z.string(), citationIds: z.array(z.string()),
+  })),
+  citations: z.array(z.object({
+    id: z.string(), evidenceId: z.string(), kind: z.enum(["fact", "inference", "unknown"]),
+    label: z.string(), excerpt: z.string(), sourceLabel: z.string(), page: z.number().int().positive().optional(), eventDate: z.string().optional(),
+  })),
+  evidenceGaps: z.array(z.string()),
+  uncertainty: z.object({ level: z.enum(["low", "medium", "high", "unavailable"]), reasons: z.array(z.string()) }),
+  history: z.object({
+    available: z.boolean(), text: z.string(), sampleSize: z.number().int().nonnegative().optional(), comparisonYear: z.number().int().optional(),
+    currentValue: z.number().min(0).max(1).optional(), referenceValue: z.number().min(0).max(1).optional(), delta: z.number().optional(),
+  }),
+  industry: z.object({
+    available: z.boolean(), text: z.string(), sampleSize: z.number().int().nonnegative().optional(), comparisonYear: z.number().int().optional(),
+    currentValue: z.number().min(0).max(1).optional(), referenceValue: z.number().min(0).max(1).optional(), delta: z.number().optional(),
+  }),
+  recommendedActions: z.array(z.string()),
+  versions: z.object({ data: z.string(), model: z.string(), score: z.string(), threshold: z.string() }),
+});
+
 export const reviewRecordSchema = z.object({
   id: z.string(), targetId: z.string(), companyId: z.string(),
-  targetType: z.enum(["evidence", "event", "entity_match", "risk_label", "action_classification", "metric"]),
+  targetType: z.enum(["evidence", "event", "entity_match", "risk_label", "action_classification", "metric", "interpretation"]),
   originalDecision: z.string(), humanDecision: z.enum(["confirm", "reject", "partial", "insufficient"]).optional(),
   reasonCode: z.string().optional(), note: z.string().optional(), reviewedAt: z.string().datetime({ offset: true }).optional(),
 });

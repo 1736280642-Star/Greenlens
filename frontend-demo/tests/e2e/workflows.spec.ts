@@ -21,17 +21,18 @@ async function expectCanvasPainted(canvas: ReturnType<Page["locator"]>) {
   expect(paintedPixels).toBeGreaterThan(20);
 }
 
-test("GreenLens opens inside the review workspace with recoverable context", async ({ page }) => {
+test("GreenLens opens AI interpretation with recoverable context", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
   await page.keyboard.press("Control+J");
 
-  await expect(page).toHaveURL(/\/review\?.*assistant=open/);
-  await expect(page.getByRole("heading", { name: "风险复核工作台", level: 2 })).toBeVisible();
-  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeVisible();
+  await expect(page).toHaveURL(/\/review\?/);
+  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+  await expect(page.getByText("机器完成指标解释、证据组织和比较；研究人员负责理解语境与使用结论。")).toBeVisible();
 });
 
-test("workflow A: dashboard to cited evidence and review", async ({ page }) => {
+test("workflow A: dashboard to structured interpretation and cited evidence", async ({ page }) => {
   test.slow();
   const errors = monitorConsole(page);
   await page.goto("/dashboard");
@@ -50,13 +51,14 @@ test("workflow A: dashboard to cited evidence and review", async ({ page }) => {
   await expect(page.locator(".cc-triad-panel")).toHaveClass(/has-company-selection/);
   await expect(page.locator(".cc-company-chip")).toContainText(selectedCompany);
   await page.keyboard.press("Control+J");
-  await expect(page).toHaveURL(/\/review\?.*assistant=open/);
-  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeVisible();
-  await page.getByRole("button", { name: /解释触发原因/ }).click();
-  await expect(page.getByRole("heading", { name: "证据推理链" })).toBeVisible();
-  await page.getByRole("radio", { name: /证据不足/ }).check();
-  await page.getByRole("button", { name: /保存并下一条/ }).click();
-  await expect(page.getByText("已保存复核结果", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/review\?/);
+  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "证据账本" })).toBeVisible();
+  const citation = page.locator(".ledger-sources button").first();
+  await expect(citation).toBeVisible();
+  await citation.click();
+  await expect(page).toHaveURL(/evidence=/);
+  await expect(page.locator(".interpretation-source-reader")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -155,58 +157,49 @@ test("report scan supports OCR recovery and explicit extraction failure", async 
   await expect(page.getByRole("heading", { name: "合成分析已生成" })).toBeVisible({ timeout: 10_000 });
 });
 
-test("compare view and review undo remain interactive", async ({ page }) => {
+test("interpretation supports comparison, export, and problem reporting", async ({ page }) => {
   await page.goto("/compare");
   await expect(page.getByText("核心指标 Dumbbell 对比")).toBeVisible();
   await page.getByRole("tab", { name: "行动构成" }).click();
   await expect(page.getByText("环境行动分类构成")).toBeVisible();
   await page.goto("/review");
-  await page.getByRole("radio", { name: "确认信号" }).check();
-  await page.getByRole("button", { name: /保存并下一条/ }).click();
-  await expect(page.getByText("已保存最近一条复核结果")).toBeVisible();
-  await page.getByRole("button", { name: "撤销" }).last().click();
-  await expect(page.getByText("已撤销复核结果", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "加入对比" }).click();
+  await expect(page.getByText("已加入对比", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出摘要" }).click();
+  expect((await download).suggestedFilename()).toMatch(/risk-interpretation\.md$/);
+  await page.getByRole("button", { name: "报告问题" }).click();
+  await expect(page.getByRole("dialog", { name: "报告解读问题" })).toBeVisible();
+  await page.getByRole("radio", { name: "证据关联错误" }).check();
+  await page.getByPlaceholder("指出错误位置或正确关联，便于后续处理").fill("引用页码需要重新核对");
+  await page.getByRole("button", { name: "记录问题" }).click();
+  await expect(page.getByText("解读问题已记录，将进入异常与质量处置", { exact: true })).toBeVisible();
 });
 
 for (const viewport of [
   { name: "review-1440", width: 1440, height: 900 },
   { name: "review-1280", width: 1280, height: 800 },
 ]) {
-  test(`review workspace stays actionable in one screen: ${viewport.name}`, async ({ page }, testInfo) => {
+  test(`AI interpretation stays actionable in one screen: ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
-    await page.goto("/review?assistant=open");
-    await expect(page.getByRole("heading", { name: "风险复核工作台", level: 2 })).toBeVisible();
-    await expect(page.getByRole("region", { name: "复核任务队列" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "证据推理链" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "人工复核决定" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /保存并下一条/ })).toBeVisible();
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(overflow).toBeLessThanOrEqual(1);
+    await page.goto("/review");
+    await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "重点解读公司" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "证据账本" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "导出摘要" })).toBeVisible();
+    const overflow = await page.evaluate(() => ({ horizontal: document.documentElement.scrollWidth - document.documentElement.clientWidth, vertical: document.documentElement.scrollHeight - document.documentElement.clientHeight }));
+    expect(overflow.horizontal).toBeLessThanOrEqual(1);
+    expect(overflow.vertical).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
   });
 }
 
-test("review decisions are explicit and closed GreenLens releases its column", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 900 });
-  await page.goto("/review?assistant=closed");
-  const saveNext = page.getByRole("button", { name: /保存并下一条/ });
-  await expect(saveNext).toBeDisabled();
-  await expect(page.getByRole("complementary", { name: "绿镜复核助理" })).toBeHidden();
-  const columns = await page.locator(".review-workspace-grid").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
-  expect(columns).toBe(2);
-  await page.getByRole("radio", { name: "确认信号" }).check();
-  await expect(page.getByLabel("判断原因")).toHaveValue("原文支持当前信号");
-  await expect(saveNext).toBeEnabled();
-});
-
-test("skipped review tasks persist and remain recoverable", async ({ page }) => {
-  await page.goto("/review?assistant=closed");
-  await page.getByRole("button", { name: "跳过", exact: true }).click();
-  await expect(page.getByText("已持久化跳过状态，可在“已跳过”中继续处理", { exact: true })).toBeVisible();
-  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("greenlens-demo-review-queue-actions") ?? "[]") as Array<{ taskId: string }>);
-  expect(persisted.length).toBeGreaterThan(0);
-  await page.getByRole("button", { name: /已跳过/ }).click();
-  await expect(page.locator(".review-task-scroll .queue-state.skipped").first()).toHaveText("已跳过");
+test("manual handling is isolated to data-quality exceptions", async ({ page }) => {
+  await page.goto("/data-sources/review");
+  await expect(page.getByRole("heading", { name: "异常与质量处置", level: 2 })).toBeVisible();
+  await expect(page.getByText("只处理解析、关联、年份和低置信度异常；风险高低不直接产生人工任务。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toHaveCount(0);
 });
 
 test("company library paginates 30 records and applies column settings", async ({ page }) => {

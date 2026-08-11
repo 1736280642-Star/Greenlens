@@ -43,7 +43,7 @@ export default function CompaniesPage() {
     { id: "upr", accessorFn: (row) => metricPercent(row, "UPR"), header: "UPR", cell: ({ getValue }) => <span>{formatTablePercent(getValue<number | null>())}</span> },
     { id: "imbalance", accessorFn: (row) => metricPercent(row, "IMBALANCE"), header: "失衡", cell: ({ getValue }) => <span>{formatTablePercent(getValue<number | null>())}</span> },
     { accessorKey: "evidenceCoverage", header: "证据覆盖", cell: ({ getValue }) => <span>{getValue<number>()}%</span> },
-    { accessorKey: "reviewStatus", header: "复核状态", cell: ({ getValue }) => <span className={`status-chip ${getValue<string>()}`}>{reviewLabel(getValue<CompanyYearRecord["reviewStatus"]>())}</span> },
+    { accessorKey: "evidenceStatus", header: "证据状态", cell: ({ getValue }) => <span className={`status-chip ${getValue<string>()}`}>{evidenceLabel(getValue<CompanyYearRecord["evidenceStatus"]>())}</span> },
     { accessorKey: "publishDate", header: "最近更新" },
   ], [compareIds, router, showToast, toggleCompare]);
   // TanStack Table intentionally returns non-memoizable functions; React Compiler skips this hook.
@@ -52,7 +52,7 @@ export default function CompaniesPage() {
 
   function exportCsv() {
     const rows = table.getFilteredRowModel().rows.map(({ original }) => [original.companyName, original.stockCode, original.industry, original.finalIndex ?? "", metricPercent(original,"EASS") ?? "", metricPercent(original,"IR") ?? "", metricPercent(original,"UPR") ?? "", original.evidenceCoverage]);
-    const content = [["风险结果仅作为待复核信号"], ["公司", "证券代码", "行业", "E-AA-ESGSI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
+    const content = [["风险结果用于研究筛查，不构成企业漂绿认定"], ["公司", "证券代码", "行业", "E-AA-ESGSI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\ufeff" + content], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "greenlens-companies.csv"; anchor.click(); URL.revokeObjectURL(url);
     notify("企业视图已导出", `导出 ${rows.length} 条当前数据记录。`); showToast("企业视图已导出");
@@ -71,5 +71,5 @@ export default function CompaniesPage() {
   </div>;
 }
 
-function reviewLabel(status: CompanyYearRecord["reviewStatus"]) { return { pending: "待复核", partial: "部分复核", reviewed: "已复核", disputed: "存在争议" }[status]; }
+function evidenceLabel(status: CompanyYearRecord["evidenceStatus"]) { return { pending: "证据待关联", insufficient: "证据不足", verified: "证据已关联", disputed: "存在争议" }[status]; }
 function formatTablePercent(value: number | null | undefined) { return value == null ? "--" : `${value}%`; }

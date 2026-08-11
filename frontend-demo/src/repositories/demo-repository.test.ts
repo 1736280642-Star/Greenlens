@@ -119,6 +119,14 @@ describe("demoRepository", () => {
     expect(historicalDashboard.scope.availableReportYears).toContain(2024);
   });
 
+  it("returns structured AI risk interpretation through the repository contract", async () => {
+    const interpretation = await demoRepository.getRiskInterpretation("cy-materials", 2025, "drivers");
+    expect(interpretation).toMatchObject({ companyId: "cy-materials", reportYear: 2025, focus: "drivers" });
+    expect(interpretation.drivers.length).toBeGreaterThan(0);
+    expect(interpretation.citations.every((citation) => citation.evidenceId)).toBe(true);
+    expect(interpretation.versions).toMatchObject({ data: expect.any(String), model: expect.any(String), score: expect.any(String), threshold: expect.any(String) });
+  });
+
   it("keeps Dashboard Command Center filters inside the Repository boundary", async () => {
     const dashboard = await demoRepository.getDashboardCommandCenter("success", { year: 2025, industry: "新材料", sampleGroup: "main_n_ge_20" });
     expect(dashboard.riskNodes.every((node) => node.industry === "新材料")).toBe(true);

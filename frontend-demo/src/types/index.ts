@@ -259,6 +259,71 @@ export interface CompanyMetricHistoryPoint {
   dataVersion: string;
 }
 
+export type RiskInterpretationFocus = "overview" | "drivers" | "evidence" | "history" | "industry";
+export type RiskInterpretationStatementKind = "fact" | "inference" | "unknown";
+
+export interface RiskInterpretationCitation {
+  id: string;
+  evidenceId: string;
+  kind: RiskInterpretationStatementKind;
+  label: string;
+  excerpt: string;
+  sourceLabel: string;
+  page?: number;
+  eventDate?: string;
+}
+
+export interface RiskInterpretationDriver {
+  metricCode: MetricCode;
+  label: string;
+  riskValue: number | null;
+  threshold?: number;
+  contribution?: number;
+  status: "attention" | "watch" | "unavailable";
+  explanation: string;
+  citationIds: string[];
+}
+
+export interface RiskInterpretationComparison {
+  available: boolean;
+  text: string;
+  sampleSize?: number;
+  comparisonYear?: number;
+  currentValue?: number;
+  referenceValue?: number;
+  delta?: number;
+}
+
+export interface RiskInterpretation {
+  id: string;
+  companyId: string;
+  companyName: string;
+  reportYear: number;
+  generatedAt: string;
+  focus: RiskInterpretationFocus;
+  headline: string;
+  summary: string;
+  riskBand: RiskBand;
+  finalIndex: number | null;
+  evidenceCoverage: number;
+  drivers: RiskInterpretationDriver[];
+  citations: RiskInterpretationCitation[];
+  evidenceGaps: string[];
+  uncertainty: {
+    level: "low" | "medium" | "high" | "unavailable";
+    reasons: string[];
+  };
+  history: RiskInterpretationComparison;
+  industry: RiskInterpretationComparison;
+  recommendedActions: string[];
+  versions: {
+    data: string;
+    model: string;
+    score: string;
+    threshold: string;
+  };
+}
+
 export interface FinancialYearRecord {
   id: string;
   companyId: string;
@@ -386,7 +451,7 @@ export interface ReviewRecord {
   id: string;
   targetId: string;
   companyId: string;
-  targetType: "evidence" | "event" | "entity_match" | "risk_label" | "action_classification" | "metric";
+  targetType: "evidence" | "event" | "entity_match" | "risk_label" | "action_classification" | "metric" | "interpretation";
   originalDecision: string;
   humanDecision?: "confirm" | "reject" | "partial" | "insufficient";
   reasonCode?: string;

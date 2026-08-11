@@ -9,7 +9,6 @@ import {
   Command,
   Database,
   FileSearch,
-  FlaskConical,
   GitCompareArrows,
   Leaf,
   Menu,
@@ -30,7 +29,7 @@ const nav = [
   { href: "/companies", label: "企业", caption: "Companies", icon: Building2 },
   { href: "/compare", label: "对比", caption: "Compare", icon: GitCompareArrows },
   { href: "/reports", label: "报告检测", caption: "Reports", icon: FileSearch },
-  { href: "/review", label: "复核", caption: "Review", icon: FlaskConical },
+  { href: "/review", label: "AI 解读", caption: "Interpretation", icon: Sparkles },
   { href: "/data-sources", label: "数据源", caption: "Sources", icon: Database },
   { href: "/methodology", label: "方法", caption: "Methodology", icon: Command },
 ];
@@ -40,7 +39,7 @@ const pageTitles: Record<string, string> = {
   companies: "企业库",
   compare: "对比分析",
   reports: "报告检测",
-  review: "风险复核工作台",
+  review: "AI 风险解读",
   "data-sources": "数据源",
   methodology: "方法与模型",
 };
@@ -97,12 +96,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const openGreenLens = useCallback(() => {
     if (pathname.startsWith("/review")) {
-      const reviewQuery = new URLSearchParams(location.search);
-      reviewQuery.set("assistant", reviewQuery.get("assistant") === "closed" ? "open" : "closed");
-      router.push(`/review?${reviewQuery}`);
+      document.querySelector(".interpretation-thesis")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
-    const query = new URLSearchParams({ assistant: "open" });
+    const query = new URLSearchParams({ view: "overview" });
     if (selectedCompanyId) query.set("companyId", selectedCompanyId);
     if (selectedReportYear) query.set("year", String(selectedReportYear));
     if (selectedEvidenceId) query.set("evidence", selectedEvidenceId);
@@ -177,13 +174,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {root === "dashboard"
               ? <div><h1>GreenLens</h1><span className="topbar-subtitle">风险分析终端 · 风险总览</span></div>
               : root === "review"
-                ? <div><h1>GreenLens</h1><span className="topbar-subtitle">人工证据复核 · 风险信号工作台</span></div>
+                ? <div><h1>GreenLens</h1><span className="topbar-subtitle">AI 风险解读 · 证据驱动研究工作台</span></div>
               : <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>}
           </div>
           <div className="topbar-actions">
             <button className="command-trigger" onClick={() => openDrawer("command")}><Search size={16} /><span>搜索公司、页面或动作</span><kbd>Ctrl K</kbd></button>
             <span className="demo-badge" title={analysisRepositoryMode === "http" ? "数据来自只读网盘接入与 SQLite 聚合" : "当前使用可重复验收的合成数据"}>{analysisRepositoryMode === "http" ? "LIVE DATA" : "SYNTHETIC"}</span>
-            <button className="icon-button" onClick={openGreenLens} aria-label="打开绿镜复核助理" title="绿镜复核助理 · Ctrl J"><Sparkles /></button>
+            <button className="icon-button" onClick={openGreenLens} aria-label="打开 AI 风险解读" title="AI 风险解读 · Ctrl J"><Sparkles /></button>
             <button className="icon-button notification-button" onClick={() => openDrawer("notifications")} aria-label="打开通知" title="通知">
               <Bell /><span>{notifications.length}</span>
             </button>
@@ -191,7 +188,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {root !== "dashboard" && root !== "data-sources" && <div className="context-bar" aria-label="全局筛选" aria-busy={!filtersInteractive}>
-          <label><span>报告年</span><select disabled={!filtersInteractive} value={year} onChange={(event) => setFilters({ year: Number(event.target.value) })}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>报告年</span><select disabled={!filtersInteractive} value={year} onChange={(event) => { const nextYear = Number(event.target.value); setFilters({ year: nextYear }); if (root === "review") { const query = new URLSearchParams(location.search); query.set("year", String(nextYear)); query.delete("companyId"); query.delete("evidence"); router.push(`/review?${query}`); } }}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>行业</span><select disabled={!filtersInteractive} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>风险</span><select disabled={!filtersInteractive} value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
           {(industry !== "全部行业" || risk !== "全部风险" || year !== 2024) && <button className="text-button" disabled={!filtersInteractive} onClick={() => setFilters({ year: 2024, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
@@ -199,7 +196,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>}
 
         <main className={`main-content ${root === "dashboard" || pathname.includes("/companies/") ? "evidence-grid-bg" : ""}`}>{children}</main>
-        <div className="global-demo-notice">只读接入数据：风险指标仅作为待复核信号；PDF 原文不下发浏览器。</div>
+        <div className="global-demo-notice">只读接入数据：AI 自动组织风险解释与引用；风险结果不构成企业漂绿认定。</div>
       </div>
       <button className={`mobile-scrim ${mobileNav ? "visible" : ""}`} onClick={() => setMobileNav(false)} aria-label="关闭导航遮罩" />
       <GlobalLayers />

@@ -45,7 +45,7 @@ export function GlobalLayers() {
   const resultLinks = [
     ...companies.filter((company) => `${company.companyName}${company.stockCode}`.toLowerCase().includes(query.toLowerCase())).map((company) => ({ label: company.companyName, detail: `${company.stockCode} · ${company.industry}`, href: `/companies/${company.companyId}?year=${company.reportYear}` })),
     ...[
-      ["风险总览", "查看声明 × 事实矩阵", "/dashboard"], ["企业库", "搜索与建立对比组", "/companies"], ["报告检测", analysisRepositoryMode === "http" ? "运行后端检测任务" : "运行合成检测任务", "/reports"], ["风险复核工作台", "处理人工判断与绿镜分析", "/review?assistant=open"],
+      ["风险总览", "查看声明 × 事实矩阵", "/dashboard"], ["企业库", "搜索与建立对比组", "/companies"], ["报告检测", analysisRepositoryMode === "http" ? "运行后端检测任务" : "运行合成检测任务", "/reports"], ["AI 风险解读", "自动解释风险、引用与不确定性", "/review?view=overview"],
     ].filter(([label, detail]) => `${label}${detail}`.includes(query)).map(([label, detail, href]) => ({ label, detail, href })),
   ].slice(0, 7);
 
