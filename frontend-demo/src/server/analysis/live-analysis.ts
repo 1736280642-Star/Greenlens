@@ -34,6 +34,16 @@ import {
 } from "@/server/netdisk/sqlite-store";
 import { alignReportYearToScores } from "@/server/netdisk/identity";
 import { evidenceIdsForMetric } from "@/lib/evidence-linking";
+import {
+  isMockDataMode,
+  mockCompanyRecords,
+  mockDashboard,
+  mockEnvironmentalAspects,
+  mockEvidence,
+  mockGsiScore,
+  mockHistories,
+  mockQuality,
+} from "@/server/analysis/mock-server-data";
 
 const dataVersion = "NETDISK-SQLITE-1";
 const eaaDataVersion = "EAA-PANEL-2012-2024-V1";
@@ -387,6 +397,7 @@ const recordsCache = globalThis as typeof globalThis & {
 };
 
 export function liveDataRevision(): string {
+  if (isMockDataMode()) return "MOCK-SERVER-1";
   const cached = recordsCache.__greenlensDataRevision;
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const value = runtimeDataRevision();
@@ -395,6 +406,7 @@ export function liveDataRevision(): string {
 }
 
 export function liveCompanyRecords(): CompanyYearRecord[] {
+  if (isMockDataMode()) return mockCompanyRecords();
   const revision = liveDataRevision();
   const cached = recordsCache.__greenlensLiveRecords;
   if (cached?.revision === revision) return cached.records;
@@ -405,6 +417,7 @@ export function liveCompanyRecords(): CompanyYearRecord[] {
 }
 
 export function liveHistories(records = liveCompanyRecords()): CompanyMetricHistoryPoint[] {
+  if (isMockDataMode()) return mockHistories();
   const version = currentDataVersion(dataVersion);
   return records.map((record) => ({ companyId: record.companyId, reportYear: record.reportYear, finalIndexRaw: record.finalIndexRaw, finalIndex: record.finalIndex, riskBand: record.riskBand, metrics: Object.fromEntries(record.metrics.map((item) => [item.code, { rawValue: item.rawValue, normalizedValue: item.normalizedValue, riskValue: item.riskValue, calculationStatus: item.calculationStatus }])), dataVersion: version }));
 }
@@ -442,6 +455,7 @@ function projectedScoreQualityRecords(rows: DashboardScoreHistoryRow[]): PanelYe
 }
 
 export function liveQuality(records = liveCompanyRecords()): PanelYearSummary[] {
+  if (isMockDataMode()) return mockQuality();
   const years = new Map<number, CompanyYearRecord[]>();
   records.forEach((record) => {
     const annual = years.get(record.reportYear) ?? [];
@@ -458,6 +472,7 @@ const dashboardCacheTtlMs = 5 * 60_000;
 const dashboardCacheMaxEntries = 24;
 
 export function liveDashboard(query: CompanyYearQuery = {}, options: { light?: boolean } = {}): DashboardCommandCenterData {
+  if (isMockDataMode()) return mockDashboard(query, options);
   const profile = (stage: string) => {
     const memory = process.memoryUsage();
     if (process.env.GREENLENS_PROFILE_DASHBOARD !== "1") return;
@@ -540,8 +555,15 @@ export function filterLiveCompanies(query: CompanyYearQuery = {}) {
     && (!query.sampleGroup || record.panelMetadata.sampleGroup === query.sampleGroup));
 }
 
-export function liveEvidence(companyId: string, reportYear?: number): EvidenceItem[] { return persistedEvidenceItems(companyId, reportYear); }
-export function liveEnvironmentalAspects(companyId: string, reportYear: number): EnvironmentalAspectScore[] { return persistedEnvironmentalAspects(companyId, reportYear); }
+export function liveEvidence(companyId: string, reportYear?: number): EvidenceItem[] {
+  if (isMockDataMode()) return mockEvidence(companyId, reportYear);
+  return persistedEvidenceItems(companyId, reportYear);
+}
+export function liveEnvironmentalAspects(companyId: string, reportYear: number): EnvironmentalAspectScore[] {
+  if (isMockDataMode()) return mockEnvironmentalAspects(companyId, reportYear);
+  return persistedEnvironmentalAspects(companyId, reportYear);
+}
 export function liveGsiScore(companyId: string, reportYear: number) {
+  if (isMockDataMode()) return mockGsiScore(companyId, reportYear);
   return listGsiScoreRecords([companyId], reportYear).find((item) => item.companyId === companyId && item.reportYear === reportYear) ?? null;
 }

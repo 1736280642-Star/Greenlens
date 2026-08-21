@@ -7,6 +7,7 @@ import type {
   ReviewTrendPoint,
 } from "@/types";
 import { liveCompanyRecords, liveDataRevision } from "./live-analysis";
+import { isMockDataMode, mockDashboardInsights } from "./mock-server-data";
 import { netdiskSnapshot } from "@/server/netdisk/local-netdisk";
 import {
   allPersistedEvidenceItems,
@@ -223,6 +224,7 @@ function buildEvidenceCoverage() {
 const insightsCache = globalThis as typeof globalThis & { __greenlensDashboardInsights?: { revision: string; insights: DashboardInsights } };
 
 export function liveDashboardInsights(): DashboardInsights {
+  if (isMockDataMode()) return mockDashboardInsights();
   const revision = `${liveDataRevision()}:reviews:${runtimeDataCounts().reviews}`;
   const cached = insightsCache.__greenlensDashboardInsights;
   if (cached?.revision === revision) return cached.insights;

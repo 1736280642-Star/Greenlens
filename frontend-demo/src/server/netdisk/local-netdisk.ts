@@ -8,6 +8,17 @@ import type { CompanyIndustryRecord, CompanyScoreRecord, DataSourceStatus, DataS
 import { loadSqliteSnapshot, pdfDerivedSummary, persistFullSnapshot, persistPdfState, type SqliteSnapshot } from "./sqlite-store";
 import { normalizeStockCode } from "./identity";
 import { buildCompanyIdentityCandidates, CURRENT_EVIDENCE_EXTRACTOR_VERSION, extractDocumentEvidence as extractResolvedDocumentEvidence, fallbackCompanyName, resolveDocumentIdentity } from "./evidence-extractor";
+import {
+  isMockDataMode,
+  mockDataSourceStatus,
+  mockEsgRatings,
+  mockFinancialRecord,
+  mockIndustries,
+  mockPdfDocuments,
+  mockRecordSummary,
+  mockSourceFiles,
+  mockViolationEvents,
+} from "@/server/analysis/mock-server-data";
 
 const rootEnvName = "GREENLENS_SOURCE_DIR";
 const workbookExtensions = new Set([".xlsx", ".xls"]);
@@ -465,20 +476,31 @@ export function ingestNetdiskPdfDocuments(inputs: NetdiskPdfDocumentInput[], app
   store.syncJobs.set(job.jobId, job);
   return job;
 }
-export function netdiskStatus(): DataSourceStatus { const configured = Boolean(process.env[rootEnvName] && existsSync(process.env[rootEnvName]!)); const readyFileCount = store.files.filter((file) => file.parseStatus === "ready").length; const connected = readyFileCount > 0; const schemaPendingFileCount = store.files.filter((file) => file.kind.endsWith("_workbook") && file.parseStatus === "schema_pending").length; return { provider: "baidu_netdisk", rootPath: configured ? "configured" : connected ? "memory_ingest" : "not_configured", connectionStatus: connected ? "connected" : configured ? "degraded" : "unavailable", lastSyncedAt: store.lastSyncedAt, fileCount: store.files.length, readyFileCount, schemaPendingFileCount, message: connected || configured ? undefined : `${rootEnvName} is not configured and no memory ingestion has run.` }; }
-export function netdiskFiles() { return store.files; }
+export function netdiskStatus(): DataSourceStatus {
+  if (isMockDataMode()) return mockDataSourceStatus();
+  const configured = Boolean(process.env[rootEnvName] && existsSync(process.env[rootEnvName]!)); const readyFileCount = store.files.filter((file) => file.parseStatus === "ready").length; const connected = readyFileCount > 0; const schemaPendingFileCount = store.files.filter((file) => file.kind.endsWith("_workbook") && file.parseStatus === "schema_pending").length; return { provider: "baidu_netdisk", rootPath: configured ? "configured" : connected ? "memory_ingest" : "not_configured", connectionStatus: connected ? "connected" : configured ? "degraded" : "unavailable", lastSyncedAt: store.lastSyncedAt, fileCount: store.files.length, readyFileCount, schemaPendingFileCount, message: connected || configured ? undefined : `${rootEnvName} is not configured and no memory ingestion has run.` };
+}
+export function netdiskFiles() { return isMockDataMode() ? mockSourceFiles() : store.files; }
 export function netdiskCompanyScores() { return store.companyScores; }
-export function netdiskCompanyIndustries() { return store.companyIndustries; }
-export function netdiskEsgRatings() { return store.esgRatings; }
-export function netdiskPdfDocuments(): PdfDocumentRecord[] { return store.pdfDocuments.map((stored) => { const { pages, ...document } = stored; void pages; return document; }); }
+export function netdiskCompanyIndustries() { return isMockDataMode() ? mockIndustries() : store.companyIndustries; }
+export function netdiskEsgRatings() { return isMockDataMode() ? mockEsgRatings() : store.esgRatings; }
+export function netdiskPdfDocuments(): PdfDocumentRecord[] {
+  if (isMockDataMode()) return mockPdfDocuments();
+  return store.pdfDocuments.map((stored) => { const { pages, ...document } = stored; void pages; return document; });
+}
 export function netdiskFieldCatalog(sourceFileId: string) { return store.catalogs.get(sourceFileId) ?? null; }
 export function netdiskSyncJob(jobId: string) { return store.syncJobs.get(jobId) ?? null; }
-export function financialRecord(companyId: string, reportYear: number) { return store.financialRecords.find((record) => record.companyId === companyId && record.reportYear === reportYear && record.fiscalPeriodEnd.endsWith("-12-31")) ?? null; }
+export function financialRecord(companyId: string, reportYear: number) {
+  if (isMockDataMode()) return mockFinancialRecord(companyId, reportYear);
+  return store.financialRecords.find((record) => record.companyId === companyId && record.reportYear === reportYear && record.fiscalPeriodEnd.endsWith("-12-31")) ?? null;
+}
 export function companyViolationEvents(companyId: string, options: number | { reportYear?: number; fromYear?: number; toYear?: number } = {}) {
   const range = typeof options === "number" ? { reportYear: options } : options;
+  if (isMockDataMode()) return mockViolationEvents(companyId, range);
   return store.violationEvents.filter((event) => event.companyId === companyId && event.violationYears.some((year) => (range.reportYear == null || year === range.reportYear) && (range.fromYear == null || year >= range.fromYear) && (range.toYear == null || year <= range.toYear)));
 }
 export function netdiskRecordSummary() {
+  if (isMockDataMode()) return mockRecordSummary();
   const persistedPdf = pdfDerivedSummary();
   const years = [...new Set([...store.financialRecords.map((record) => record.reportYear), ...store.companyScores.map((record) => record.reportYear), ...store.violationEvents.flatMap((event) => event.violationYears), ...store.pdfDocuments.flatMap((document) => document.reportYear ? [document.reportYear] : [])])].filter((year) => year >= 2000 && year <= new Date().getFullYear() + 2).sort((a, b) => a - b);
   return {

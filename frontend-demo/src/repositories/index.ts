@@ -1,5 +1,4 @@
 import type { AnalysisRepository } from "@/repositories/analysis-repository";
-import { demoRepository } from "@/repositories/demo-repository";
 import { HttpAnalysisRepository } from "@/repositories/http-analysis-repository";
 
 export type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repositories/analysis-repository";
@@ -9,20 +8,24 @@ export type { AnalysisRepository, CompanyYearQuery, DemoScenario } from "@/repos
 const repositoryMode = process.env.NEXT_PUBLIC_ANALYSIS_REPOSITORY ?? "http";
 const apiBaseUrl = process.env.NEXT_PUBLIC_ANALYSIS_API_BASE_URL ?? "/api/v1";
 
-export const analysisRepository: AnalysisRepository = repositoryMode === "http"
-  ? new Proxy(demoRepository, {
-      get(target, property) {
-        const remote = new Set([
-          "listCompanies", "getCompany", "listEvidence", "listEnvironmentalAspects", "getCompanyHistory",
-          "getFinancialYear", "listViolationEvents", "listEsgRatings", "listPanelYearSummaries", "getDashboardCommandCenter", "getDashboardConstellation",
-          "getDashboardInsights", "getRiskInterpretation", "createAnalysisJob", "getAnalysisJob", "cancelAnalysisJob", "retryAnalysisJob", "saveReview", "listReviewQueueActions", "saveReviewQueueAction", "getEvidencePageText",
-          "getBaiduNetdiskStatus", "listBaiduNetdiskFiles", "getBaiduNetdiskFieldCatalog", "createBaiduNetdiskSync", "getBaiduNetdiskSyncJob",
-        ]);
-        const source = remote.has(String(property)) ? new HttpAnalysisRepository(apiBaseUrl) : target;
-        const value = source[property as keyof AnalysisRepository];
-        return typeof value === "function" ? value.bind(source) : value;
-      },
-    })
-  : demoRepository;
-
 export const analysisRepositoryMode = repositoryMode === "http" ? "http" : "mock";
+
+// The mock repository is loaded lazily so the HTTP (production-like) client
+// bundle never ships the large synthetic fixture generator.
+let mockRepositoryPromise: Promise<AnalysisRepository> | null = null;
+
+function loadMockRepository(): Promise<AnalysisRepository> {
+  mockRepositoryPromise ??= import("@/repositories/demo-repository").then((module) => module.demoRepository);
+  return mockRepositoryPromise;
+}
+
+export const analysisRepository: AnalysisRepository = repositoryMode === "http"
+  ? new HttpAnalysisRepository(apiBaseUrl)
+  : new Proxy({} as AnalysisRepository, {
+      get(_target, property) {
+        return (...args: unknown[]) => loadMockRepository().then((repository) => {
+          const value = (repository as unknown as Record<PropertyKey, unknown>)[property as PropertyKey];
+          return typeof value === "function" ? (value as (...callArgs: unknown[]) => unknown)(...args) : value;
+        });
+      },
+    });

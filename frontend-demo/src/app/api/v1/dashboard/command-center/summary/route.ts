@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { liveDashboard } from "@/server/analysis/live-analysis";
+import { isMockDataMode, mockConstellationNodes } from "@/server/analysis/mock-server-data";
 import { loadDashboardConstellationRows, releaseSqliteMemory } from "@/server/netdisk/sqlite-store";
 import type { SampleGroup } from "@/types";
 
@@ -15,6 +16,7 @@ export function GET(request: NextRequest) {
     sampleGroup: (params.get("sampleGroup") as SampleGroup | null) ?? undefined,
   };
   if (params.get("constellation") === "1") {
+    if (isMockDataMode()) return NextResponse.json(mockConstellationNodes(query));
     const rows = loadDashboardConstellationRows(query);
     releaseSqliteMemory();
     return NextResponse.json(rows);

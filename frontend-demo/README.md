@@ -24,6 +24,23 @@ NEXT_PUBLIC_ANALYSIS_REPOSITORY=http
 NEXT_PUBLIC_ANALYSIS_API_BASE_URL=/api/v1
 ```
 
+### Vercel mock demo
+
+To serve the 1000-sample synthetic dataset through the read-only API (while AI risk
+interpretation still calls the real server-side provider), set both flags to `true`:
+
+```bash
+GREENLENS_MOCK_DATA=true
+NEXT_PUBLIC_GREENLENS_MOCK_DATA=true
+NEXT_PUBLIC_ANALYSIS_REPOSITORY=http
+NEXT_PUBLIC_ANALYSIS_API_BASE_URL=/api/v1
+```
+
+The mock dataset contains 1000 company-year records plus derived evidence, history,
+financials, violation events, environmental aspects, GSI robustness scores, and
+multi-vendor ESG ratings. `GREENLENS_AI_ENABLED=true` and a valid provider key are
+required separately for real AI interpretation.
+
 ## Quality gates
 
 ```bash
@@ -41,7 +58,7 @@ The Playwright suite covers the investigation workflow, report success/OCR/failu
 | Route | Purpose |
 | --- | --- |
 | `/dashboard` | Scan dense KPIs, EASS × E-AA-ESGSI, metric ledgers, industry heatmaps, and review operations |
-| `/companies` | Search, sort, paginate, configure columns, compare, and export 30 synthetic companies |
+| `/companies` | Search, sort, paginate, configure columns, compare, and export 1000 synthetic companies |
 | `/companies/cy-materials` | Inspect contributions, report evidence, external facts, ratings, and history |
 | `/compare` | Compare 2-5 companies without producing a simplistic ranking |
 | `/reports` | Upload a PDF, poll a persistent analysis job, and open linked evidence |

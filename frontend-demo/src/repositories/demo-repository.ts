@@ -1,4 +1,4 @@
-import { companies, companyHistory, environmentalAspects, evidence, financialRecords, panelYearSummaries, violationEvents } from "@/mocks/fixtures/companies";
+import { companies, companyHistory, environmentalAspects, esgRatings, evidence, financialRecords, gsiScoreRecords, panelYearSummaries, violationEvents } from "@/mocks/fixtures/companies";
 import { dashboardInsights } from "@/mocks/fixtures/dashboard";
 import {
   analysisJobSchema,
@@ -13,6 +13,7 @@ import {
   environmentalAspectScoreSchema,
   evidenceItemSchema,
   financialYearRecordSchema,
+  gsiScoreRecordSchema,
   panelYearSummarySchema,
   reviewRecordSchema,
   reviewQueueActionSchema,
@@ -29,7 +30,9 @@ import type { AnalysisJob, DataSourceSyncJob, MetricCode, ReviewQueueAction, Rev
 export type { DemoScenario } from "@/repositories/analysis-repository";
 
 async function wait(scenario: DemoScenario) {
-  await new Promise((resolve) => setTimeout(resolve, scenario === "slow" ? 900 : 180));
+  if (process.env.NODE_ENV !== "test") {
+    await new Promise((resolve) => setTimeout(resolve, scenario === "slow" ? 900 : 180));
+  }
   if (scenario === "error") throw new Error("演示数据载入失败");
 }
 
@@ -74,6 +77,8 @@ const validatedHistory = companyMetricHistoryPointSchema.array().parse(companyHi
 const validatedFinancials = financialYearRecordSchema.array().parse(financialRecords);
 const validatedPanelYearSummaries = panelYearSummarySchema.array().parse(panelYearSummaries);
 const validatedViolationEvents = violationEventSchema.array().parse(violationEvents);
+const validatedEsgRatings = esgRatingRecordSchema.array().parse(esgRatings);
+const validatedGsiScoreRecords = gsiScoreRecordSchema.array().parse(gsiScoreRecords);
 const validatedDashboardInsights = dashboardInsightsSchema.parse(dashboardInsights);
 const validatedSourceFiles = sourceFileRecordSchema.array().parse(syntheticSourceFiles);
 
@@ -159,8 +164,10 @@ export const demoRepository: AnalysisRepository = {
     }));
   },
   async listEsgRatings(companyId: string, options: { fromYear?: number; toYear?: number; vendor?: string } = {}) {
-    void companyId; void options;
-    return esgRatingRecordSchema.array().parse([]);
+    return structuredClone(validatedEsgRatings.filter((item) => item.companyId === companyId
+      && (!options.fromYear || item.reportYear >= options.fromYear)
+      && (!options.toYear || item.reportYear <= options.toYear)
+      && (!options.vendor || item.vendor === options.vendor)));
   },
   async listPanelYearSummaries(options: { fromYear?: number; toYear?: number } = {}) {
     return structuredClone(validatedPanelYearSummaries.filter((item) =>
@@ -174,7 +181,7 @@ export const demoRepository: AnalysisRepository = {
       scenario === "empty" ? [] : validatedHistory,
       scenario === "empty" ? [] : validatedPanelYearSummaries,
       query,
-      { light: query.light === true },
+      { light: query.light === true, gsiRecords: scenario === "empty" ? [] : validatedGsiScoreRecords },
     );
     return structuredClone(dashboardCommandCenterSchema.parse(payload));
   },
@@ -197,6 +204,7 @@ export const demoRepository: AnalysisRepository = {
       cohort: validatedCompanies.filter((item) => item.reportYear === reportYear),
       evidence: validatedEvidence.filter((item) => item.companyId === companyId && item.reportYear === reportYear),
       history: validatedHistory.filter((item) => item.companyId === companyId),
+      gsi: validatedGsiScoreRecords.find((item) => item.companyId === companyId && item.reportYear === reportYear) ?? null,
       focus,
     });
     return structuredClone(riskInterpretationSchema.parse(result));

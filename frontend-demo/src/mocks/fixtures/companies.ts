@@ -4,14 +4,19 @@ import type {
   CompanyYearRecord,
   EnvironmentalAspectCategory,
   EnvironmentalAspectScore,
+  EsgRatingRecord,
   EvidenceItem,
   FinancialYearRecord,
+  GsiScoreRecord,
   MetricCode,
   PanelYearSummary,
   RedFlagCode,
   RiskBand,
   ViolationEvent,
 } from "@/types";
+
+/** Number of synthetic company-year samples in the demo dataset. */
+export const MOCK_COMPANY_COUNT = 1000;
 
 const versions = {
   schema: "metric-contract-v2",
@@ -136,17 +141,47 @@ const baseSeeds: CompanySeed[] = [
   { id: "jiuhe-build", name: "九禾建设", code: "601593", industry: "建筑", esgsiNormalized: .38, uprTarget: .61, imbalance: .51, coverage: 58, evidenceStatus: "disputed", reviewStatus: "disputed", events: 4, actions: [16, 14, 15], topicCounts: [619, 171, 143] },
 ];
 
-const syntheticNames = [
+const industries = ["新材料", "综合能源", "交通设备", "消费品", "电子制造", "建筑"];
+
+// The first 24 synthetic names are kept stable so dashboard review tasks and any
+// existing references (e.g. `demo-company-08`) keep resolving.
+const stableSyntheticNames = [
   "云岫复材", "星泓化工", "青岳装备", "沐川纺织", "禾望包装", "清原电气", "岚桥物流", "泽衍科技",
   "森岳建材", "澜序制造", "景辰玻璃", "汇青机械", "川河纸业", "启川电机", "新澜涂料", "岭南器材",
   "远泽包装", "松原设备", "潮汐材料", "衡川精工", "青砾科技", "云港运输", "明川制品", "清域工程",
 ];
-const industries = ["新材料", "综合能源", "交通设备", "消费品", "电子制造", "建筑"];
 
-const generatedSeeds: CompanySeed[] = syntheticNames.map((name, index) => ({
+const namePrefixes = ["云", "星", "青", "沐", "禾", "清", "岚", "泽", "森", "澜", "景", "汇", "川", "启", "新", "远", "松", "潮", "衡", "明", "光", "石", "金", "银", "林", "江", "湖", "山", "海", "田"];
+const nameCores = ["岫", "泓", "岳", "川", "望", "原", "桥", "衍", "序", "辰", "青", "河", "澜", "南", "泽", "汐", "砾", "港", "域", "洲", "岭", "江", "海", "林", "田", "台", "港", "城", "湖", "山"];
+const industrySuffix: Record<string, string> = {
+  "新材料": "新材",
+  "综合能源": "能源",
+  "交通设备": "交通",
+  "消费品": "消费",
+  "电子制造": "电子",
+  "建筑": "建设",
+};
+
+function syntheticNameFor(index: number) {
+  if (index < stableSyntheticNames.length) return stableSyntheticNames[index];
+  const i = index - stableSyntheticNames.length;
+  const prefix = namePrefixes[i % namePrefixes.length];
+  const core = nameCores[Math.floor(i / namePrefixes.length) % nameCores.length];
+  const industry = industries[(Math.floor(i / (namePrefixes.length * nameCores.length)) + i) % industries.length];
+  return `${prefix}${core}${industrySuffix[industry]}`;
+}
+
+function syntheticActions(index: number): [number, number, number] {
+  const bucket = index % 20;
+  if (bucket === 0) return [4 + index % 4, 3 + index % 3, 1 + index % 2];
+  if (bucket === 10) return [8 + index % 6, 5 + index % 4, 3 + index % 3];
+  return [12 + index % 17, 8 + (index * 3) % 15, 5 + (index * 5) % 14];
+}
+
+const generatedSeeds: CompanySeed[] = Array.from({ length: MOCK_COMPANY_COUNT - baseSeeds.length }, (_, index) => ({
   id: `demo-company-${String(index + 1).padStart(2, "0")}`,
-  name,
-  code: `D${String(index + 101).padStart(5, "0")}`,
+  name: syntheticNameFor(index),
+  code: `90${String(index + 1).padStart(4, "0")}`,
   industry: industries[index % industries.length],
   esgsiNormalized: round(.2 + ((index * 17) % 48) / 100, 2),
   uprTarget: round(.24 + ((index * 13) % 58) / 100, 2),
@@ -155,7 +190,7 @@ const generatedSeeds: CompanySeed[] = syntheticNames.map((name, index) => ({
   evidenceStatus: ["pending", "insufficient", "verified", "disputed"][index % 4] as CompanyYearRecord["evidenceStatus"],
   reviewStatus: ["pending", "pending", "reviewed", "disputed"][index % 4] as CompanyYearRecord["reviewStatus"],
   events: 1 + index % 7,
-  actions: [12 + index % 17, 8 + (index * 3) % 15, 5 + (index * 5) % 14],
+  actions: syntheticActions(index),
   topicCounts: [380 + (index * 31) % 360, 170 + (index * 17) % 240, 140 + (index * 13) % 210],
 }));
 
@@ -448,3 +483,65 @@ function createEvidence(company: CompanyYearRecord): EvidenceItem[] {
 }
 
 export const evidence: EvidenceItem[] = companies.flatMap(createEvidence);
+
+const ratingVendors = ["msci", "wind_shangdao", "huazheng", "csmar_shangdao"];
+const ratingYears = [2021, 2022, 2023, 2024, 2025];
+
+export const esgRatings: EsgRatingRecord[] = companies.flatMap((company, companyIndex) => (
+  ratingVendors.flatMap((vendor, vendorIndex) => ratingYears.map((year) => {
+    const base = company.finalIndex ?? 0.5;
+    const score = round(clamp(85 - base * 42 + vendorIndex * 3 + (year - 2025) * -0.5, 8, 98));
+    const rating = score >= 85 ? "AAA" : score >= 75 ? "AA" : score >= 65 ? "A" : score >= 55 ? "BBB" : score >= 45 ? "BB" : score >= 35 ? "B" : "CCC";
+    return {
+      id: `esg-rating-${vendor}-${company.companyId}-${year}`,
+      companyId: company.companyId,
+      vendor,
+      stockCode: company.stockCode,
+      companyName: company.companyName,
+      reportYear: year,
+      rating,
+      score,
+      eScore: round(clamp(score + 2 + (companyIndex % 3))),
+      sScore: round(clamp(score - 1 - (companyIndex % 2))),
+      gScore: round(clamp(score + 1)),
+      scoreScale: "0-100",
+      sourceFile: `synthetic-${vendor}-ratings.csv`,
+      ingestedAt: "2026-08-12T08:00:00.000Z",
+    };
+  }))
+));
+
+export const gsiScoreRecords: GsiScoreRecord[] = companies.map((company, companyIndex) => {
+  const topics = company.esgTopics;
+  const coveragePenalty = round(clamp(0.7 - company.evidenceCoverage / 100));
+  const gwScore = round(clamp(0.5 + (company.finalIndex ?? 0.5) * 0.4 - coveragePenalty * 0.3));
+  const gsiFinal = round(clamp(gwScore + coveragePenalty + topics.imbalanceScore * 0.3));
+  return {
+    id: `gsi-${company.companyId}-${company.reportYear}`,
+    companyId: company.companyId,
+    stockCode: company.stockCode,
+    companyName: company.companyName,
+    reportYear: company.reportYear,
+    totalWords: company.textProcessing.totalWords,
+    eCount: topics.eCount,
+    sCount: topics.sCount,
+    gCount: topics.gCount,
+    eFocus: topics.eFocus,
+    sFocus: topics.sFocus,
+    gFocus: topics.gFocus,
+    imbalance: topics.imbalanceScore,
+    gwScore,
+    coveragePenalty,
+    gsiFinal,
+    duplicateCount: companyIndex % 9 === 0 ? 2 : 1,
+    qualityFlags: companyIndex % 9 === 0 ? ["GSI_DUPLICATE_COMPANY_YEAR_SELECTED_LONGEST_TEXT"] : [],
+    calculationStatus: "calculated",
+    modelVersion: "gsi-synthetic-v1",
+    dataVersion: versions.data,
+    sourceFile: "synthetic-gsi.csv",
+    sourceRow: companyIndex + 2,
+    importedAt: "2026-08-12T08:00:00.000Z",
+  };
+});
+
+export const mockIndustries: string[] = industries;

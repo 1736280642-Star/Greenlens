@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { demoRepository } from "./demo-repository";
 import { buildDashboardCommandCenter } from "./dashboard-command-center";
+import { MOCK_COMPANY_COUNT } from "@/mocks/fixtures/companies";
 import type { GsiScoreRecord } from "@/types";
 
 describe("demoRepository", () => {
@@ -8,7 +9,7 @@ describe("demoRepository", () => {
 
   it("returns stable synthetic company data through the repository contract", async () => {
     const items = await demoRepository.listCompanies();
-    expect(items).toHaveLength(30);
+    expect(items).toHaveLength(MOCK_COMPANY_COUNT);
     expect(items[0]).toMatchObject({ companyId: "cy-materials", reportYear: 2025, riskBand: "high", reportId: "report-cy-materials-2025" });
     expect(items[0].finalIndexRaw).not.toBe(items[0].finalIndex);
     expect(items[0].finalIndex).toBeLessThanOrEqual(1);
@@ -71,7 +72,7 @@ describe("demoRepository", () => {
   it("exposes source-aligned yearly panel audit summaries", async () => {
     const summaries = await demoRepository.listPanelYearSummaries({ fromYear: 2022, toYear: 2025 });
     expect(summaries).toHaveLength(4);
-    expect(summaries[0]).toMatchObject({ year: 2022, uniqueCompanyYears: 30, sourceFile: expect.any(String) });
+    expect(summaries[0]).toMatchObject({ year: 2022, uniqueCompanyYears: MOCK_COMPANY_COUNT, sourceFile: expect.any(String) });
     expect(summaries.every((item) => item.sourceRows >= item.uniqueCompanyYears)).toBe(true);
   });
 
@@ -107,14 +108,14 @@ describe("demoRepository", () => {
     const dashboard = await demoRepository.getDashboardCommandCenter("success", { year: 2025 });
     expect(dashboard.scope).toMatchObject({ reportYear: 2025, dataVersion: "SYN-2026.08" });
     expect(dashboard.scope.availableReportYears).toEqual([2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016]);
-    expect(dashboard.kpis.sampleCount).toBe(30);
+    expect(dashboard.kpis.sampleCount).toBe(MOCK_COMPANY_COUNT);
     expect(dashboard.metricTriad.map((item) => item.code)).toEqual(["RHETORIC_CONTENT", "ACTION_SUBSTANCE", "AMBIGUITY_VERIFICATION"]);
-    expect(dashboard.metricTriad.every((item) => item.sampleCount === 30)).toBe(true);
+    expect(dashboard.metricTriad.every((item) => item.sampleCount === MOCK_COMPANY_COUNT)).toBe(true);
     expect(dashboard.metricTriad.every((item) => item.q1 != null && item.medianValue != null && item.q3 != null && item.q1 <= item.medianValue && item.medianValue <= item.q3)).toBe(true);
-    expect(dashboard.riskNodes).toHaveLength(30);
+    expect(dashboard.riskNodes).toHaveLength(MOCK_COMPANY_COUNT);
     expect(dashboard.annualTrend).toHaveLength(10);
-    expect(dashboard.annualTrend.every((item) => item.meanFinalIndex != null && item.sampleCount === 30)).toBe(true);
-    expect(dashboard.gsiRobustness).toMatchObject({ available: false, matchedCompanyCount: 0, dataVersion: null });
+    expect(dashboard.annualTrend.every((item) => item.meanFinalIndex != null && item.sampleCount === MOCK_COMPANY_COUNT)).toBe(true);
+    expect(dashboard.gsiRobustness).toMatchObject({ available: true, matchedCompanyCount: MOCK_COMPANY_COUNT, dataVersion: "SYN-2026.08" });
     expect(dashboard.redFlagTrend).toHaveLength(10);
     expect(dashboard.industryRisk.length).toBeGreaterThan(0);
     expect(dashboard.quality).toHaveLength(10);

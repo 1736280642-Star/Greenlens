@@ -43,7 +43,7 @@ interface DemoState {
   reset: () => void;
 }
 
-export const defaultYear = analysisRepositoryMode === "mock" ? 2025 : 2024;
+export const defaultYear = process.env.NEXT_PUBLIC_GREENLENS_MOCK_DATA === "true" || analysisRepositoryMode === "mock" ? 2025 : 2024;
 
 const defaults = {
   year: defaultYear,

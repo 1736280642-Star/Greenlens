@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { EvidenceReindexScope, PdfDocumentKind } from "@/types";
 import { createEvidenceReindex, previewEvidenceReindex, resumeEvidenceReindexRuns, scheduleEvidenceReindex } from "@/server/netdisk/evidence-reindex";
 import { evidenceReindexFunnel, listPdfEvidenceExceptions } from "@/server/netdisk/sqlite-store";
+import { isMockDataMode, mockEvidenceFunnel } from "@/server/analysis/mock-server-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ function isLocalRequest(request: NextRequest) {
 }
 
 export function GET() {
+  if (isMockDataMode()) return NextResponse.json({ funnel: mockEvidenceFunnel(), exceptions: [] });
   resumeEvidenceReindexRuns();
   return NextResponse.json({ funnel: evidenceReindexFunnel(), exceptions: listPdfEvidenceExceptions(20) });
 }
