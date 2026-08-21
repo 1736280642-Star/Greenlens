@@ -1,7 +1,6 @@
-# GreenLens Frontend Demo
+# GreenLens Demo
 
 GreenLens is a desktop-first ESG evidence investigation workspace. Deterministic tests use synthetic data; production-like local runs can also persist and parse a user-uploaded text PDF through the HTTP Repository.
-
 > 演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。
 
 ## Run locally
@@ -78,7 +77,6 @@ The Playwright suite covers the investigation workflow, report success/OCR/failu
 The underlying reason for these boundaries is migration cost: a real API can replace the Repository without rewriting route behavior, while risk, evidence quality, and review status remain distinct contracts. For users, this produces a coherent evidence trail and prevents a synthetic score from being mistaken for a verdict.
 
 ## Documentation
-
 - [Metric contract v2](docs/metric-contract-v2.md)
 - [Metric contract v1（历史）](docs/metric-contract-v1.md)
 - [Design decisions](docs/design-decisions.md)
