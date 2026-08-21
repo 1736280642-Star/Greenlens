@@ -3,7 +3,7 @@ import { CommandPanelHeading } from "./panel-heading";
 import { ACCENT_COLORS } from "./risk-palette";
 import type { DashboardCommandCenterData, RedFlagCode } from "@/types";
 
-const flagLabels: Record<RedFlagCode, string> = { HIGH_ESGSI: "ESGSI ↑", LOW_EASS: "EASS ↓", HIGH_IR: "IR ↑", HIGH_UPR: "UPR ↑" };
+const flagLabels: Record<RedFlagCode, string> = { HIGH_ESGSI: "ESI ↑", LOW_EASS: "EASS ↓", HIGH_IR: "IR ↑", HIGH_UPR: "UPR ↑" };
 
 /** Derived flag rows (design spec §13): evidence-insufficiency and volatility
  * are not enum red flags but are derived from cohort signals so the dashboard

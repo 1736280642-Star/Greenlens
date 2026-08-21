@@ -6,7 +6,7 @@ The most effective interaction is the continuous evidence path: quadrant selecti
 
 ## What improved understanding
 
-- The EASS-by-E-AA-ESGSI quadrant answers who deserves attention and whether weak action substance aligns with a high final index.
+- The EASS-by-EAA-ESI quadrant answers who deserves attention and whether weak action substance aligns with a high final index.
 - The dense Dashboard keeps KPI, action composition, formula breakdown, industry heatmap, and review operations within a compact scan path.
 - Separate risk, evidence coverage, and review objects prevent low coverage from reading as low risk.
 - Precise underlines preserve report readability better than full-paragraph highlighting.
@@ -115,3 +115,35 @@ The repeated acceptance workflow is automated in `tests/e2e/workflows.spec.ts`. 
 - Dashboard surfaces now use a dark-teal ladder (`#03090B` → `#06171A` → `#071C20` → `#082126`). Ordinary borders use low-opacity cyan-gray; only the Hexbin primary panel and selected state receive a Cyan edge.
 - Hexbin opacity now follows fixed density bands rather than a nearly uniform relative range. Heatmap follows Deep Cyan → Aqua → Amber → Orange → Coral, so neither visualization resembles an olive or spreadsheet-green field.
 - Waterfall semantics are calculation-aware: baseline is neutral Cyan, penalties Coral, decreases Aqua, normalization Blue, and Final E-AA is dynamically Low/Medium/High. A 53% final value is therefore Amber instead of Green.
+
+## Enterprise comparison workflow consolidation · 2026-08-12
+
+- Comparison is a task result, not a primary destination. The sidebar now exposes only the enterprise library; researchers select 2–5 companies there and enter the comparison result without changing product context.
+- The result lives at `/companies?view=compare&companies=...`. Company IDs in the URL are the source of truth, so refresh and copied links preserve the same ordered cohort instead of depending only on persisted browser state.
+- The legacy `/compare` route redirects to the enterprise library. Keeping a recoverable redirect prevents stale bookmarks from becoming dead ends without restoring a second navigation concept.
+- Selection, comparison URL state, removal, and the return-to-library path form one reusable workflow. Future comparison views should extend the embedded `CompanyComparison` component rather than add another top-level route.
+
+## Enterprise comparison simultaneous-view correction · 2026-08-17
+
+- Tabs hid two-thirds of the comparison context and forced researchers to remember values across views. The result now mounts the metric dot plot, action composition, and report/event timeline together so cross-chart interpretation requires no mode switch.
+- Single-screen comparison works best as one dominant analytical field plus two supporting fields: the six-row metric plot owns the left column, while action composition and timeline share the right column. Narrow screens retain all content by stacking the same three panels.
+- The desktop height budget is verified at `1440×900` and `1280×800` with the maximum five-company cohort. Automated checks block page overflow and panels outside the viewport; alternating metric labels reduce collisions without changing the underlying values.
+- A complete-looking chart can still be semantically empty. The 2024 score panel already supports EASS, IR, UPR, ESI, and EAA-ESI for 2,136 companies, while report-evidence linkage is still incomplete; source-status chips now expose that distinction instead of presenting zero evidence rows as measured zero activity.
+- When evidence counts are unavailable, action shares can be recovered from the declared model identity `EASS = implemented + alpha × planning` and `IR = indeterminate`. The UI labels these as model proportions and never reports them as statement counts.
+- The former timeline was decorative: it generated three fixed year labels without reading history or violations. It now uses `getCompanyHistory` and `listViolationEvents`, positions report years and announcement dates on a shared axis, and states zero recorded events explicitly.
+
+## Local PDF analysis closure · 2026-08-17
+
+- A progress animation is not a processing pipeline. Analysis jobs now advance only when the local Worker completes validation, page parsing, extraction, classification, calculation, and evidence linking; `GET` is read-only.
+- Upload and evidence ingestion must share one document fact source. Browser uploads now enter the existing PDF page, evidence, aspect, and page-reference tables instead of creating a second upload-only schema.
+- File persistence is what makes retry, deduplication, and audit possible. The MVP stores private bytes by SHA-256, keeps physical paths server-only, and binds results to parser, extractor, formula, and calculation versions.
+- A partial model must stay partial. The uploaded document can produce EASS, IR, and UPR, but it reports EAA-ESI as unavailable until ESI and cohort normalization inputs are connected; missing inputs never become zero.
+- Deterministic UI automation and real parsing tests serve different purposes. Playwright keeps the fast Mock success/OCR/failure stories, while Node integration tests process valid PDF bytes and verify the persistent Worker result.
+
+## Stored-PDF evidence rebuild closure · 2026-08-17
+
+- PDF parsing completion and research evidence completion are different states. The earlier UI counted completed queue items but could not prove that stored page text had passed identity resolution, evidence extraction, and exact company-year linkage; the new funnel makes every boundary measurable.
+- Identity resolution must precede extraction. Mixing filename inference with sentence classification made retries non-auditable and allowed partial metadata to masquerade as linked evidence. The pure resolver now records its signals and confidence, while the extractor receives an explicit resolved identity.
+- A rebuild is a data migration, not a page refresh. Per-document transactions, versioned evidence IDs, a durable job cursor, and three migration metadata keys make retries safe and cache invalidation observable without touching raw PDF bytes.
+- Automation needs a human exception lane. Strong conflicts and unresolved identities remain visible, retain candidate context, and can be corrected by stock code and report year without downloading or OCRing the report again.
+- Aggregate metrics should consume only evidence that can be defended. Live EASS, IR, and UPR switch to document-derived action counts only when such evidence exists; absent or unmatched inputs stay unavailable or retain the score workbook result rather than being silently converted to zero.

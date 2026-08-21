@@ -2,8 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import * as XLSX from "xlsx";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { companyViolationEvents, financialRecord, ingestNetdiskPdfDocuments, ingestNetdiskRows, netdiskCompanyIndustries, netdiskCompanyScores, netdiskEsgRatings, netdiskFieldCatalog, netdiskFiles, netdiskPdfDocuments, netdiskRecordSummary, netdiskSyncJob, syncLocalNetdisk } from "./local-netdisk";
+
+vi.hoisted(() => {
+  process.env.GREENLENS_SQLITE_PATH = ":memory:";
+  process.env.GREENLENS_DISABLE_LEGACY_MIGRATION = "1";
+});
 
 const originalRoot = process.env.GREENLENS_SOURCE_DIR;
 const temporaryPaths: string[] = [];

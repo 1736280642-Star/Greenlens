@@ -1,9 +1,9 @@
-import type { CompanyMetricHistoryPoint, CompanyYearRecord, DashboardCommandCenterData, DashboardRiskNode, MetricCode, PanelYearSummary, RedFlagCode, RiskBand } from "@/types";
+import type { CompanyMetricHistoryPoint, CompanyYearRecord, DashboardCommandCenterData, DashboardRiskNode, GsiScoreRecord, MetricCode, PanelYearSummary, RedFlagCode, RiskBand } from "@/types";
 import { getMetric } from "@/types";
 import type { CompanyYearQuery } from "@/repositories/analysis-repository";
 
 const redFlagCodes: RedFlagCode[] = ["HIGH_ESGSI", "LOW_EASS", "HIGH_IR", "HIGH_UPR"];
-const industryMetricCodes: Array<"ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESGSI"> = ["ESGSI", "EASS", "IR", "UPR", "EAA_ESGSI"];
+const industryMetricCodes: Array<"ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESI"> = ["ESGSI", "EASS", "IR", "UPR", "EAA_ESI"];
 
 function round(value: number, digits = 6) {
   return Number(value.toFixed(digits));
@@ -22,6 +22,11 @@ function median(values: Array<number | null | undefined>) {
   return quantile(values.filter((value): value is number => value != null), .5);
 }
 
+function mean(values: Array<number | null | undefined>) {
+  const available = values.filter((value): value is number => value != null);
+  return available.length ? round(available.reduce((sum, value) => sum + value, 0) / available.length) : null;
+}
+
 function rate(total: number, matches: number) {
   return total ? round(matches / total) : null;
 }
@@ -30,8 +35,8 @@ function historyMetric(point: CompanyMetricHistoryPoint, code: MetricCode, field
   return point.metrics[code]?.[field] ?? null;
 }
 
-const lightNodeLimitPerBand = 250;
-const lightNodeMaxTotal = 1000;
+export const lightNodeLimitPerBand = 15;
+export const lightNodeMaxTotal = 60;
 
 function sampleRiskNodes(nodes: DashboardRiskNode[]): DashboardRiskNode[] {
   const order = new Map(nodes.map((node, index) => [node, index]));
@@ -53,7 +58,7 @@ export function buildDashboardCommandCenter(
   historyRecords: CompanyMetricHistoryPoint[],
   qualityRecords: PanelYearSummary[],
   query: CompanyYearQuery = {},
-  options: { light?: boolean } = {},
+  options: { light?: boolean; gsiRecords?: GsiScoreRecord[] } = {},
 ): DashboardCommandCenterData {
   const reportYear = query.year ?? Math.max(...companyRecords.map((company) => company.reportYear), 2025);
   const availableReportYears = [...new Set([
@@ -67,13 +72,24 @@ export function buildDashboardCommandCenter(
     && (!query.sampleGroup || company.panelMetadata.sampleGroup === query.sampleGroup),
   );
   const companyIds = new Set(companies.map((company) => company.companyId));
+  const gsiRecords = options.gsiRecords ?? [];
+  const gsiByCompanyYear = new Map(gsiRecords.map((record) => [`${record.companyId}:${record.reportYear}`, record]));
+  const currentGsiRecords = companies.flatMap((company) => {
+    const record = gsiByCompanyYear.get(`${company.companyId}:${company.reportYear}`);
+    return record ? [record] : [];
+  });
+  const cohortGsiHistory = gsiRecords.filter((record) => companyIds.has(record.companyId) && record.reportYear <= reportYear);
   const histories = historyRecords.filter((point) => companyIds.has(point.companyId) && point.reportYear <= reportYear);
   const years = [...new Set(histories.map((point) => point.reportYear))].sort((a, b) => a - b);
   const historiesByCompany = new Map<string, CompanyMetricHistoryPoint[]>();
+  const historiesByYear = new Map<number, CompanyMetricHistoryPoint[]>();
   for (const point of histories) {
     const current = historiesByCompany.get(point.companyId) ?? [];
     current.push(point);
     historiesByCompany.set(point.companyId, current);
+    const annual = historiesByYear.get(point.reportYear) ?? [];
+    annual.push(point);
+    historiesByYear.set(point.reportYear, annual);
   }
   for (const points of historiesByCompany.values()) points.sort((a, b) => a.reportYear - b.reportYear);
 
@@ -130,7 +146,7 @@ export function buildDashboardCommandCenter(
       q3: quantile(values, .75),
       history: years.map((year) => ({
         year,
-        value: median(histories.filter((point) => point.reportYear === year).map(definition.historyValue)),
+        value: median((historiesByYear.get(year) ?? []).map(definition.historyValue)),
       })),
     };
   });
@@ -139,6 +155,7 @@ export function buildDashboardCommandCenter(
     const companyHistory = historiesByCompany.get(company.companyId) ?? [];
     const latestThree = companyHistory.filter((point) => point.reportYear >= reportYear - 2).slice(-3);
     const persistentHighRiskYears = latestThree.filter((point) => point.riskBand === "high").length;
+    const gsi = gsiByCompanyYear.get(`${company.companyId}:${company.reportYear}`);
     return {
       companyId: company.companyId,
       companyName: company.companyName,
@@ -156,8 +173,19 @@ export function buildDashboardCommandCenter(
         EASS: getMetric(company, "EASS")?.riskValue ?? null,
         IR: getMetric(company, "IR")?.riskValue ?? null,
         UPR: getMetric(company, "UPR")?.riskValue ?? null,
-        EAA_ESGSI: company.finalIndex,
+        EAA_ESI: company.finalIndex,
       },
+      gsi: gsi ? {
+        gsiFinal: gsi.gsiFinal,
+        gwScore: gsi.gwScore,
+        coveragePenalty: gsi.coveragePenalty,
+        imbalance: gsi.imbalance,
+        eFocus: gsi.eFocus,
+        sFocus: gsi.sFocus,
+        gFocus: gsi.gFocus,
+        duplicateCount: gsi.duplicateCount,
+        qualityFlags: gsi.qualityFlags,
+      } : null,
       persistentHighRiskYears,
       indexBreakdown: company.indexBreakdown,
       history: latestThree.map((point) => ({ year: point.reportYear, finalIndex: point.finalIndex, riskBand: point.riskBand })),
@@ -174,19 +202,73 @@ export function buildDashboardCommandCenter(
   const persistentRisks = allPersistentRisks.slice(0, 8);
 
   const annualTrend = years.map((year) => {
-    const points = histories.filter((point) => point.reportYear === year);
+    const points = historiesByYear.get(year) ?? [];
+    const finalValues = points.map((point) => point.finalIndex).filter((value): value is number => value != null);
     return {
       year,
-      medianFinalIndex: median(points.map((point) => point.finalIndex)),
+      medianFinalIndex: median(finalValues),
+      meanFinalIndex: mean(finalValues),
+      q1FinalIndex: quantile(finalValues, .25),
+      q3FinalIndex: quantile(finalValues, .75),
       highRiskRate: rate(points.length, points.filter((point) => point.riskBand === "high").length),
       medianEass: median(points.map((point) => historyMetric(point, "EASS"))),
+      sampleCount: points.length,
+    };
+  });
+
+  const gsiMetricDefinitions = [
+    { code: "GSI" as const, label: "GSI", description: "基于 ESG 报告词典覆盖、披露结构与漂绿语言形成的稳健性风险指数。", value: (record: GsiScoreRecord) => record.gsiFinal },
+    { code: "COVERAGE_PENALTY" as const, label: "覆盖不足", description: "E/S/G 主题覆盖不足产生的模型惩罚，仅作为数据与披露完整性信号。", value: (record: GsiScoreRecord) => record.coveragePenalty },
+    { code: "IMBALANCE" as const, label: "披露失衡", description: "E/S/G 三个维度关注度不均衡程度，用于解释 GSI 的结构性来源。", value: (record: GsiScoreRecord) => record.imbalance },
+  ];
+  const gsiYears = [...new Set(cohortGsiHistory.map((record) => record.reportYear))].sort((a, b) => a - b);
+  const gsiMetrics = gsiMetricDefinitions.map((definition) => {
+    const values = currentGsiRecords.map(definition.value);
+    return {
+      code: definition.code,
+      label: definition.label,
+      description: definition.description,
+      medianValue: median(values),
+      meanValue: mean(values),
+      sampleCount: values.length,
+      q1: quantile(values, .25),
+      q3: quantile(values, .75),
+      history: gsiYears.map((year) => {
+        const annualValues = cohortGsiHistory.filter((record) => record.reportYear === year).map(definition.value);
+        return {
+          year,
+          medianValue: median(annualValues),
+          meanValue: mean(annualValues),
+          q1: quantile(annualValues, .25),
+          q3: quantile(annualValues, .75),
+          sampleCount: annualValues.length,
+        };
+      }),
+    };
+  });
+
+  const currentCompanyById = new Map(companies.map((company) => [company.companyId, company]));
+  const historyTriggers = (point: CompanyMetricHistoryPoint, code: "ESGSI" | "EASS" | "IR" | "UPR") => {
+    const value = historyMetric(point, code);
+    if (value == null) return false;
+    const threshold = getMetric(currentCompanyById.get(point.companyId)!, code)?.threshold ?? .5;
+    return code === "EASS" ? value <= threshold : value >= threshold;
+  };
+  const redFlagTrend = years.map((year) => {
+    const records = historiesByYear.get(year) ?? [];
+    return {
+      year,
+      highEsgsiRate: rate(records.length, records.filter((record) => historyTriggers(record, "ESGSI")).length),
+      lowEassRate: rate(records.length, records.filter((record) => historyTriggers(record, "EASS")).length),
+      ambiguityVerificationRate: rate(records.length, records.filter((record) => historyTriggers(record, "IR") || historyTriggers(record, "UPR")).length),
+      sampleCount: records.length,
     };
   });
 
   const industryRisk = [...new Set(companies.map((company) => company.industry))].sort().flatMap((industry) => {
     const group = companies.filter((company) => company.industry === industry);
     return industryMetricCodes.map((metricCode) => {
-      const values = group.map((company) => metricCode === "EAA_ESGSI" ? company.finalIndex : getMetric(company, metricCode)?.riskValue)
+      const values = group.map((company) => metricCode === "EAA_ESI" ? company.finalIndex : getMetric(company, metricCode)?.riskValue)
         .filter((value): value is number => value != null);
       return {
         industry,
@@ -218,8 +300,6 @@ export function buildDashboardCommandCenter(
   const evidenceParseFailedCount = companies.filter((company) => evidenceLinkageStatus(company) === "parse_failed").length;
   const lowEvidenceCoverageCount = companies.filter((company) => evidenceLinkageStatus(company) === "low_coverage").length;
   const sampledRiskNodes = options.light === true ? sampleRiskNodes(riskNodes) : riskNodes;
-  const sampledIds = new Set(sampledRiskNodes.map((node) => node.companyId));
-  const linkedRiskNodes = [...sampledRiskNodes, ...persistentRisks.filter((node) => !sampledIds.has(node.companyId))];
 
   return {
     scope: {
@@ -242,7 +322,15 @@ export function buildDashboardCommandCenter(
       qualityAlertCount,
     },
     metricTriad,
-    riskNodes: linkedRiskNodes,
+    gsiRobustness: {
+      available: currentGsiRecords.length > 0,
+      matchedCompanyCount: currentGsiRecords.length,
+      duplicateGroupCount: currentGsiRecords.filter((record) => record.duplicateCount > 1).length,
+      dataVersion: currentGsiRecords[0]?.dataVersion ?? null,
+      metrics: gsiMetrics,
+    },
+    redFlagTrend,
+    riskNodes: sampledRiskNodes,
     persistentRisks,
     annualTrend,
     industryRisk,

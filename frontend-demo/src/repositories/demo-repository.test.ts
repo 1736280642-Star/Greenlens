@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { demoRepository } from "./demo-repository";
+import { buildDashboardCommandCenter } from "./dashboard-command-center";
+import type { GsiScoreRecord } from "@/types";
 
 describe("demoRepository", () => {
   afterEach(() => vi.useRealTimers());
@@ -11,7 +13,7 @@ describe("demoRepository", () => {
     expect(items[0].finalIndexRaw).not.toBe(items[0].finalIndex);
     expect(items[0].finalIndex).toBeLessThanOrEqual(1);
     expect(items[0].versions.schema).toBe("metric-contract-v2");
-    expect(items[0].metrics.map((metric) => metric.code)).toEqual(["EASS", "IR", "UPR", "ESGSI", "EAA_ESGSI", "IMBALANCE"]);
+    expect(items[0].metrics.map((metric) => metric.code)).toEqual(["EASS", "IR", "UPR", "ESGSI", "EAA_ESI", "IMBALANCE"]);
   });
 
   it("supports empty and error acceptance scenarios", async () => {
@@ -51,9 +53,9 @@ describe("demoRepository", () => {
 
   it("returns repository-backed history instead of page-generated substitute values", async () => {
     const company = await demoRepository.getCompany("cy-materials", "success", 2025);
-    const history = await demoRepository.getCompanyHistory("cy-materials", { fromYear: 2016, toYear: 2025, metrics: ["EASS", "EAA_ESGSI"] });
+    const history = await demoRepository.getCompanyHistory("cy-materials", { fromYear: 2016, toYear: 2025, metrics: ["EASS", "EAA_ESI"] });
     expect(history).toHaveLength(10);
-    expect(Object.keys(history[0].metrics).sort()).toEqual(["EAA_ESGSI", "EASS"]);
+    expect(Object.keys(history[0].metrics).sort()).toEqual(["EAA_ESI", "EASS"]);
     expect(history.at(-1)).toMatchObject({ reportYear: 2025, finalIndex: company!.finalIndex });
   });
 
@@ -111,12 +113,33 @@ describe("demoRepository", () => {
     expect(dashboard.metricTriad.every((item) => item.q1 != null && item.medianValue != null && item.q3 != null && item.q1 <= item.medianValue && item.medianValue <= item.q3)).toBe(true);
     expect(dashboard.riskNodes).toHaveLength(30);
     expect(dashboard.annualTrend).toHaveLength(10);
+    expect(dashboard.annualTrend.every((item) => item.meanFinalIndex != null && item.sampleCount === 30)).toBe(true);
+    expect(dashboard.gsiRobustness).toMatchObject({ available: false, matchedCompanyCount: 0, dataVersion: null });
+    expect(dashboard.redFlagTrend).toHaveLength(10);
     expect(dashboard.industryRisk.length).toBeGreaterThan(0);
     expect(dashboard.quality).toHaveLength(10);
 
     const historicalDashboard = await demoRepository.getDashboardCommandCenter("success", { year: 2020 });
     expect(historicalDashboard.scope.availableReportYears).toContain(2025);
     expect(historicalDashboard.scope.availableReportYears).toContain(2024);
+  });
+
+  it("joins deduplicated GSI company-year records as a separate robustness model", async () => {
+    const companies = await demoRepository.listCompanies();
+    const histories = (await Promise.all(companies.map((company) => demoRepository.getCompanyHistory(company.companyId)))).flat();
+    const quality = await demoRepository.listPanelYearSummaries();
+    const target = companies[0];
+    const record: GsiScoreRecord = {
+      id: "gsi-test", companyId: target.companyId, stockCode: target.stockCode, companyName: target.companyName, reportYear: target.reportYear,
+      totalWords: 1_200, eCount: 20, sCount: 10, gCount: 5, eFocus: .02, sFocus: .01, gFocus: .005,
+      imbalance: .015, gwScore: .6, coveragePenalty: .2, gsiFinal: .42, duplicateCount: 2,
+      qualityFlags: ["GSI_DUPLICATE_COMPANY_YEAR_SELECTED_LONGEST_TEXT"], calculationStatus: "calculated",
+      modelVersion: "gsi-fixed-v1", dataVersion: "GSI-test", sourceFile: "synthetic-gsi.csv", sourceRow: 2, importedAt: "2026-08-12T08:00:00.000Z",
+    };
+    const dashboard = buildDashboardCommandCenter(companies, histories, quality, { year: target.reportYear }, { gsiRecords: [record] });
+    expect(dashboard.gsiRobustness).toMatchObject({ available: true, matchedCompanyCount: 1, duplicateGroupCount: 1, dataVersion: "GSI-test" });
+    expect(dashboard.gsiRobustness.metrics.map((item) => item.code)).toEqual(["GSI", "COVERAGE_PENALTY", "IMBALANCE"]);
+    expect(dashboard.riskNodes.find((node) => node.companyId === target.companyId)?.gsi).toMatchObject({ gsiFinal: .42, coveragePenalty: .2 });
   });
 
   it("returns structured AI risk interpretation through the repository contract", async () => {

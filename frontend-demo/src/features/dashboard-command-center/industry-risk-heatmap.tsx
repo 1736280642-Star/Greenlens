@@ -7,8 +7,8 @@ import { HEATMAP_RAMP } from "./risk-palette";
 import { useEChart } from "./use-echart";
 import type { DashboardIndustryRiskCell, DashboardTriadCode } from "@/types";
 
-const metricCodes = ["ESGSI", "EASS", "IR", "UPR", "EAA_ESGSI"] as const;
-const labels: Record<(typeof metricCodes)[number], string> = { ESGSI: "ESGSI", EASS: "EASS缺口", IR: "IR", UPR: "UPR", EAA_ESGSI: "E-AA" };
+const metricCodes = ["ESGSI", "EASS", "IR", "UPR", "EAA_ESI"] as const;
+const labels: Record<(typeof metricCodes)[number], string> = { ESGSI: "ESI", EASS: "EASS缺口", IR: "IR", UPR: "UPR", EAA_ESI: "EAA-ESI" };
 const heatmapColors = [...HEATMAP_RAMP];
 
 export function IndustryRiskHeatmap({ data, selectedFactor, onSelectIndustry, expanded = false, onExpand, embedded = false }: { data: DashboardIndustryRiskCell[]; selectedFactor: DashboardTriadCode | null; onSelectIndustry: (industry: string) => void; expanded?: boolean; onExpand?: () => void; embedded?: boolean }) {

@@ -2,7 +2,7 @@ export type RiskBand = "high" | "medium" | "low" | "unavailable";
 export type ReviewStatus = "pending" | "partial" | "reviewed" | "disputed";
 export type EvidenceStatus = "verified" | "pending" | "insufficient" | "disputed";
 export type CalculationStatus = "calculated" | "mock" | "unavailable";
-export type MetricCode = "EASS" | "IR" | "UPR" | "ESGSI" | "EAA_ESGSI" | "IMBALANCE";
+export type MetricCode = "EASS" | "IR" | "UPR" | "ESGSI" | "EAA_ESI" | "IMBALANCE";
 export type RiskDirection = "higher_is_risk" | "lower_is_risk" | "contextual";
 export type EnvironmentalActionClass = "implemented" | "planning" | "indeterminate";
 export type EnvironmentalAspectCategory =
@@ -19,7 +19,7 @@ export type RedFlagCode = "HIGH_ESGSI" | "LOW_EASS" | "HIGH_IR" | "HIGH_UPR";
 export interface AnalysisMetric {
   code: MetricCode;
   label: string;
-  /** Formula output before normalization. ESGSI may be negative and E-AA-ESGSI may exceed 1. */
+  /** Formula output before normalization. ESGSI may be negative and EAA-ESI may exceed 1. */
   rawValue: number | null;
   /** Comparable value after the declared normalization rule. */
   normalizedValue: number | null;
@@ -75,6 +75,7 @@ export interface PlanningVerificationSummary {
 
 export interface EnvironmentalAspectScore {
   id: string;
+  documentId?: string;
   companyId: string;
   reportYear: number;
   aspectText: string;
@@ -89,6 +90,7 @@ export interface EnvironmentalAspectScore {
   evidenceIds: string[];
   calculationStatus: CalculationStatus;
   formulaVersion: string;
+  extractorVersion?: string;
 }
 
 export interface ScoreInputValue {
@@ -177,7 +179,9 @@ export interface PanelYearSummary {
 
 export interface EvidenceItem {
   id: string;
+  documentId?: string;
   companyId: string;
+  stockCode?: string;
   reportYear: number;
   type: "claim" | "action" | "metric" | "verification" | "external";
   actionClass?: EnvironmentalActionClass;
@@ -186,6 +190,9 @@ export interface EvidenceItem {
   title: string;
   excerpt: string;
   page?: number;
+  textHash?: string;
+  environmentalCategory?: EnvironmentalAspectCategory;
+  extractorVersion?: string;
   eventDate?: string;
   sourceLabel: string;
   sourceUrl?: string;
@@ -273,6 +280,33 @@ export interface RiskInterpretationCitation {
   eventDate?: string;
 }
 
+export type RiskInterpretationEvidenceRelationKind = "supporting" | "counter" | "context";
+export type RiskInterpretationEvidenceStrength = "strong" | "moderate" | "weak";
+
+export interface RiskInterpretationEvidenceRelation {
+  citationId: string;
+  relation: RiskInterpretationEvidenceRelationKind;
+  strength: RiskInterpretationEvidenceStrength;
+  relevance: string;
+}
+
+export interface RiskInterpretationMetricComponent {
+  label: string;
+  value: number | null;
+  unit: "count" | "ratio";
+}
+
+export interface RiskInterpretationMetricCalculation {
+  rawValue: number | null;
+  normalizedValue: number | null;
+  riskValue: number | null;
+  numerator?: number;
+  denominator?: number;
+  formulaVersion: string;
+  normalizationVersion: string;
+  components: RiskInterpretationMetricComponent[];
+}
+
 export interface RiskInterpretationDriver {
   metricCode: MetricCode;
   label: string;
@@ -281,7 +315,16 @@ export interface RiskInterpretationDriver {
   contribution?: number;
   status: "attention" | "watch" | "unavailable";
   explanation: string;
+  finding: string;
+  whyItMatters: string;
+  evidenceAssessment: string;
+  evidenceGap: string;
+  nextAction: string;
   citationIds: string[];
+  supportingCitationIds: string[];
+  counterCitationIds: string[];
+  evidenceRelations: RiskInterpretationEvidenceRelation[];
+  calculation: RiskInterpretationMetricCalculation;
 }
 
 export interface RiskInterpretationComparison {
@@ -303,9 +346,36 @@ export interface RiskInterpretation {
   focus: RiskInterpretationFocus;
   headline: string;
   summary: string;
+  researchBrief: {
+    finding: string;
+    evidenceAssessment: string;
+    modelAgreement: string;
+    priorityAction: string;
+  };
   riskBand: RiskBand;
   finalIndex: number | null;
   evidenceCoverage: number;
+  robustness: {
+    coverage: "three_views" | "two_views" | "primary_only";
+    gsi: {
+      gsiFinal: number;
+      gwScore: number;
+      coveragePenalty: number;
+      imbalance: number;
+      eFocus: number;
+      sFocus: number;
+      gFocus: number;
+      modelVersion: string;
+      dataVersion: string;
+      qualityFlags: string[];
+    } | null;
+    redFlags: {
+      triggered: RedFlagCode[];
+      count: number;
+      classificationVersion: string;
+      reason: string;
+    };
+  };
   drivers: RiskInterpretationDriver[];
   citations: RiskInterpretationCitation[];
   evidenceGaps: string[];
@@ -519,6 +589,74 @@ export interface DashboardInsights {
 }
 
 export type DashboardTriadCode = "RHETORIC_CONTENT" | "ACTION_SUBSTANCE" | "AMBIGUITY_VERIFICATION";
+export type DashboardResearchView = "primary" | "gsi" | "red_flags";
+export type DashboardGsiMetricCode = "GSI" | "COVERAGE_PENALTY" | "IMBALANCE";
+
+export interface GsiScoreRecord {
+  id: string;
+  companyId: string;
+  stockCode: string;
+  companyName: string;
+  reportYear: number;
+  totalWords: number;
+  eCount: number;
+  sCount: number;
+  gCount: number;
+  eFocus: number;
+  sFocus: number;
+  gFocus: number;
+  imbalance: number;
+  gwScore: number;
+  coveragePenalty: number;
+  gsiFinal: number;
+  duplicateCount: number;
+  qualityFlags: string[];
+  calculationStatus: "calculated";
+  modelVersion: string;
+  dataVersion: string;
+  sourceFile: string;
+  sourceRow: number;
+  importedAt: string;
+}
+
+export interface DashboardGsiNode {
+  gsiFinal: number;
+  gwScore: number;
+  coveragePenalty: number;
+  imbalance: number;
+  eFocus: number;
+  sFocus: number;
+  gFocus: number;
+  duplicateCount: number;
+  qualityFlags: string[];
+}
+
+export interface DashboardGsiMetricSummary {
+  code: DashboardGsiMetricCode;
+  label: string;
+  description: string;
+  medianValue: number | null;
+  meanValue: number | null;
+  sampleCount: number;
+  q1: number | null;
+  q3: number | null;
+  history: Array<{
+    year: number;
+    medianValue: number | null;
+    meanValue: number | null;
+    q1: number | null;
+    q3: number | null;
+    sampleCount: number;
+  }>;
+}
+
+export interface DashboardRedFlagTrendPoint {
+  year: number;
+  highEsgsiRate: number | null;
+  lowEassRate: number | null;
+  ambiguityVerificationRate: number | null;
+  sampleCount: number;
+}
 
 export interface DashboardMetricTriad {
   code: DashboardTriadCode;
@@ -550,12 +688,26 @@ export interface DashboardRiskNode {
   environmentalSentenceCount: number;
   evidenceCoverage: number;
   redFlags: RedFlagCode[];
-  metricRiskValues: Record<"ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESGSI", number | null>;
+  metricRiskValues: Record<"ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESI", number | null>;
+  gsi: DashboardGsiNode | null;
   persistentHighRiskYears: number;
-  /** Per-company E-AA-ESGSI waterfall breakdown; preserved in light responses. */
+  /** Per-company EAA-ESI waterfall breakdown; preserved in light responses. */
   indexBreakdown: IndexBreakdown;
   /** Absent in light dashboard responses; persistent risk uses persistentHighRiskYears. */
   history?: DashboardRiskHistoryPoint[];
+}
+
+/** Minimal SQLite projection used only to render the full risk constellation. */
+export interface DashboardConstellationNode {
+  companyId: string;
+  companyName: string;
+  stockCode: string;
+  industry: string;
+  reportYear: number;
+  esgsi: number | null;
+  eass: number | null;
+  finalIndex: number | null;
+  riskBand: RiskBand;
 }
 
 export interface DashboardWatchItem extends DashboardRiskNode {
@@ -566,20 +718,24 @@ export interface DashboardWatchItem extends DashboardRiskNode {
 export interface DashboardAnnualTrendPoint {
   year: number;
   medianFinalIndex: number | null;
+  meanFinalIndex: number | null;
+  q1FinalIndex: number | null;
+  q3FinalIndex: number | null;
   highRiskRate: number | null;
   medianEass: number | null;
+  sampleCount: number;
 }
 
 export interface DashboardIndustryRiskCell {
   industry: string;
-  metricCode: "ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESGSI";
+  metricCode: "ESGSI" | "EASS" | "IR" | "UPR" | "EAA_ESI";
   sampleCount: number;
   medianRiskValue: number | null;
   q1: number | null;
   q3: number | null;
 }
 
-/** Cohort median E-AA-ESGSI waterfall breakdown, used by the dashboard's
+/** Cohort median EAA-ESI waterfall breakdown, used by the dashboard's
  * "全部样本中位数" waterfall mode. Every step is null when the cohort
  * has no usable ESGSI / penalty inputs. */
 export interface DashboardCohortBreakdown {
@@ -612,6 +768,14 @@ export interface DashboardCommandCenterData {
     qualityAlertCount: number;
   };
   metricTriad: DashboardMetricTriad[];
+  gsiRobustness: {
+    available: boolean;
+    matchedCompanyCount: number;
+    duplicateGroupCount: number;
+    dataVersion: string | null;
+    metrics: DashboardGsiMetricSummary[];
+  };
+  redFlagTrend: DashboardRedFlagTrendPoint[];
   riskNodes: DashboardRiskNode[];
   persistentRisks: DashboardWatchItem[];
   annualTrend: DashboardAnnualTrendPoint[];
@@ -625,10 +789,38 @@ export interface DashboardCommandCenterData {
 export interface AnalysisJob {
   jobId: string;
   reportId: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   phase: "collect" | "preprocess" | "extract" | "classify" | "calculate" | "risk";
+  stage?: "uploaded" | "validating" | "parsing" | "segmenting" | "extracting" | "classifying" | "calculating" | "linking" | "completed" | "failed" | "cancelled";
   progress: number;
   resultCompanyId?: string;
+  document?: {
+    documentId: string;
+    fileName: string;
+    fileSize: number;
+    fileHash: string;
+    pageCount?: number;
+    textPageCount?: number;
+    textCoverage?: number;
+    deduplicated?: boolean;
+  };
+  result?: {
+    eass: number | null;
+    ir: number | null;
+    upr: number | null;
+    evidenceCount: number;
+    environmentalAspectCount: number;
+    calculationStatus: "calculated" | "unavailable";
+    unavailableReason?: string;
+    parserVersion: string;
+    extractorVersion: string;
+    formulaVersion: string;
+    calculatedAt: string;
+  };
+  attempts?: number;
+  createdAt?: string;
+  startedAt?: string;
+  completedAt?: string;
   error?: { cause: string; impact: string; nextAction: string };
 }
 
@@ -663,10 +855,14 @@ export interface PdfPageBlock {
 
 /** Server-side document payload produced from a read-only Netdisk byte stream. */
 export interface NetdiskPdfDocumentInput {
+  documentId?: string;
   fsid: string;
   filename: string;
   size: number;
   md5?: string;
+  stockCode?: string;
+  companyName?: string;
+  reportYear?: number;
   kind: PdfDocumentKind;
   pageCount: number;
   textPageCount: number;
@@ -695,6 +891,92 @@ export interface PdfDocumentRecord {
   parseStatus: "ready" | "schema_pending" | "failed";
   qualityFlags: string[];
   ingestedAt: string;
+}
+
+export type EvidenceReindexScope = "missing_only" | "failed_only" | "version_outdated";
+export type PdfEvidenceJobStatus =
+  | "queued"
+  | "resolving_identity"
+  | "extracting"
+  | "aggregating"
+  | "linking"
+  | "completed"
+  | "identity_unresolved"
+  | "text_unavailable"
+  | "extraction_failed"
+  | "score_unmatched";
+
+export interface EvidenceIdentityResolution {
+  resolvedCompanyId: string | null;
+  resolvedStockCode: string | null;
+  reportYear: number | null;
+  publicationDate: string | null;
+  identityConfidence: number;
+  yearConfidence: number;
+  identitySources: string[];
+  yearSource: string | null;
+  alternativeCandidates: Array<{ companyId: string; stockCode: string; companyName: string }>;
+  status: "resolved" | "unresolved" | "ambiguous";
+}
+
+export interface EvidenceRebuildDocument {
+  documentId: string;
+  fsid: string;
+  filename: string;
+  kind: PdfDocumentKind;
+  textMode: PdfTextMode;
+  metadata: PdfDocumentRecord;
+  pages: PdfPageBlock[];
+}
+
+export interface EvidenceReindexFunnel {
+  completedDocuments: number;
+  documentsWithTextPages: number;
+  identityResolvedDocuments: number;
+  evidenceExtractedDocuments: number;
+  linkedCompanyYearDocuments: number;
+  identityUnresolvedDocuments: number;
+  extractionFailedDocuments: number;
+  scoreUnmatchedDocuments: number;
+}
+
+export interface EvidenceReindexPreview extends EvidenceReindexFunnel {
+  scope: EvidenceReindexScope;
+  kind: PdfDocumentKind;
+  extractorVersion: string;
+  candidateDocuments: number;
+  sampledDocuments: number;
+  sampledWithText: number;
+  sampledCompanyResolved: number;
+  sampledYearResolved: number;
+  sampledEvidenceExtractable: number;
+  estimatedAutoLinked: number;
+  estimatedManualReview: number;
+  sampleCandidates: Array<{
+    documentId: string;
+    companyId?: string;
+    reportYear?: number;
+    identityStatus: EvidenceIdentityResolution["status"];
+    scoreMatched: boolean;
+    evidenceCount: number;
+  }>;
+}
+
+export interface EvidenceReindexRun {
+  jobId: string;
+  status: "queued" | "running" | "completed" | "completed_with_warnings" | "failed";
+  scope: EvidenceReindexScope;
+  kind: PdfDocumentKind;
+  extractorVersion: string;
+  totalCandidates: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  cursor?: string;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  error?: { cause: string; impact: string; nextAction: string };
 }
 
 export interface SourceFieldCatalog {
@@ -731,7 +1013,7 @@ export interface DataSourceSyncJob {
   error?: { cause: string; impact: string; nextAction: string };
 }
 
-export const metricCodes: MetricCode[] = ["EASS", "IR", "UPR", "ESGSI", "EAA_ESGSI", "IMBALANCE"];
+export const metricCodes: MetricCode[] = ["EASS", "IR", "UPR", "ESGSI", "EAA_ESI", "IMBALANCE"];
 
 export function getMetric(record: CompanyYearRecord, code: MetricCode) {
   return record.metrics.find((metric) => metric.code === code);

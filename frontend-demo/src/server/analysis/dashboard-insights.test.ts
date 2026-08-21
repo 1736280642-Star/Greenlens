@@ -6,6 +6,7 @@ import type { ReviewRecord } from "@/types";
 
 const isolatedDb = path.join(mkdtempSync(path.join(tmpdir(), "greenlens-insights-")), "test.sqlite");
 process.env.GREENLENS_SQLITE_PATH = isolatedDb;
+process.env.GREENLENS_DISABLE_LEGACY_MIGRATION = "1";
 
 import { companyYearListSchema, dashboardInsightsSchema, reviewRecordSchema } from "@/contracts/analysis";
 
@@ -103,13 +104,17 @@ describe("live dashboard insights and persisted backend records", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T08:00:00.000Z"));
     const job = store.createAnalysisJobRecord({ companyId: record.companyId, reportYear: 2024, fileName: "greenlens-demo.pdf", fileSize: 1024 });
-    expect(store.getAnalysisJobRecord(job.jobId)).toMatchObject({ status: "queued", phase: "collect", progress: 4 });
+    expect(store.getAnalysisJobRecord(job.jobId)).toMatchObject({ status: "queued", phase: "collect", progress: 0 });
     vi.advanceTimersByTime(2_100);
+    expect(store.getAnalysisJobRecord(job.jobId)).toMatchObject({ status: "queued", phase: "collect", progress: 0 });
+    store.updateAnalysisJobRecord(job.jobId, { status: "running", phase: "classify", stage: "classifying", progress: 63 });
     expect(store.getAnalysisJobRecord(job.jobId)).toMatchObject({ status: "running", phase: "classify", progress: 63 });
     vi.advanceTimersByTime(1_500);
+    store.updateAnalysisJobRecord(job.jobId, { status: "completed", phase: "risk", stage: "completed", progress: 100 });
     expect(store.getAnalysisJobRecord(job.jobId)).toMatchObject({ status: "completed", progress: 100 });
     const scanJob = store.createAnalysisJobRecord({ companyId: record.companyId, reportYear: 2024, fileName: "scan-demo.pdf", fileSize: 1024 });
     vi.advanceTimersByTime(1_500);
+    store.updateAnalysisJobRecord(scanJob.jobId, { status: "failed", phase: "extract", stage: "failed", progress: 42, error: { cause: "报告没有可解析文本层，可能是扫描件。", impact: "声明与行动证据尚未抽取，不能计算风险指标。", nextAction: "启用 OCR 后重新提交任务。" } });
     expect(store.getAnalysisJobRecord(scanJob.jobId)).toMatchObject({ status: "failed", phase: "extract", error: { nextAction: "启用 OCR 后重新提交任务。" } });
     vi.useRealTimers();
 

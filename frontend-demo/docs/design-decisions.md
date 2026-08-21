@@ -26,7 +26,7 @@ GreenLens is a desktop-first ESG risk interpretation workspace. Its primary job 
 - Dashboard exception: loaded operational copy and chart labels use a `16px` minimum without increasing the fixed first-row panel height.
 - Data values and formula identifiers: `13px` or larger in the monospace role.
 - Dense layouts may reduce padding or reorganize columns, but must not reduce operational copy below `12px`.
-- The Playwright accessibility suite audits Dashboard, company library and detail, comparison, reports, review, and methodology pages against this floor.
+- The Playwright accessibility suite audits Dashboard, company library and detail, the comparison result embedded in the company workflow, reports, review, and methodology pages against this floor.
 
 ## Layout
 
@@ -38,7 +38,7 @@ GreenLens is a desktop-first ESG risk interpretation workspace. Its primary job 
 |              +--------------------------------------+----------------+
 | demo status  | compact KPI ledger + current contract/version          |
 |              +----------------+----------------------+----------------+
-|              | telemetry      | EASS x E-AA-ESGSI  | formula ledger |
+|              | telemetry      | EASS x EAA-ESI  | formula ledger |
 |              +----------------+----------------------+----------------+
 |              | metric incidence | industry heatmap | diagnostics    |
 +--------------+-------------------------------------------------------+
@@ -48,7 +48,7 @@ At 1024px the sidebar collapses. Below 768px navigation moves to the top; the Da
 
 ## Signature
 
-The EASS-by-E-AA-ESGSI quadrant is the Dashboard's expressive motion surface. Selecting a point opens the same company-year context in AI Risk Interpretation.
+The EASS-by-EAA-ESI quadrant is the Dashboard's expressive motion surface. Selecting a point opens the same company-year context in AI Risk Interpretation.
 
 The interpretation page's signature is the evidence ledger: each automatic finding is paired directly with a real report excerpt, page reference or external fact. Violet identifies generated interpretation, cyan identifies selection and citation, and risk colors remain limited to Aqua, Amber and Coral. Missing evidence is shown as unknown rather than filled with generated confidence.
 

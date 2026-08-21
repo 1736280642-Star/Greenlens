@@ -1,9 +1,10 @@
 import { Activity, MessageSquareText, ShieldCheck } from "lucide-react";
 import { CommandPanelHeading } from "./panel-heading";
-import { formatPercent, type DashboardMetricTriad, type DashboardRiskNode, type DashboardTriadCode } from "@/types";
+import { ResearchViewSwitch } from "./research-view-switch";
+import { formatPercent, type DashboardMetricTriad, type DashboardResearchView, type DashboardRiskNode, type DashboardTriadCode } from "@/types";
 
 const icons = { RHETORIC_CONTENT: MessageSquareText, ACTION_SUBSTANCE: ShieldCheck, AMBIGUITY_VERIFICATION: Activity };
-const metricCodes = { RHETORIC_CONTENT: "ESGSI", ACTION_SUBSTANCE: "EASS", AMBIGUITY_VERIFICATION: "IR · UPR" };
+const metricCodes = { RHETORIC_CONTENT: "ESI", ACTION_SUBSTANCE: "EASS", AMBIGUITY_VERIFICATION: "IR · UPR" };
 
 function MiniTrend({ values, expanded = false }: { values: Array<number | null>; expanded?: boolean }) {
   const available = values.map((value, index) => ({ value, index })).filter((item): item is { value: number; index: number } => item.value != null);
@@ -49,9 +50,10 @@ function percentile(value: number | null, values: number[]) {
   return Math.round(values.filter((item) => item <= value).length / values.length * 100);
 }
 
-export function MetricTriad({ items, nodes, selectedCompany, selected, onSelect, expanded = false, onExpand }: { items: DashboardMetricTriad[]; nodes: DashboardRiskNode[]; selectedCompany: DashboardRiskNode | null; selected: DashboardTriadCode | null; onSelect: (code: DashboardTriadCode | null) => void; expanded?: boolean; onExpand?: () => void }) {
+export function MetricTriad({ items, nodes, selectedCompany, selected, onSelect, view, onViewChange, expanded = false, onExpand }: { items: DashboardMetricTriad[]; nodes: DashboardRiskNode[]; selectedCompany: DashboardRiskNode | null; selected: DashboardTriadCode | null; onSelect: (code: DashboardTriadCode | null) => void; view: DashboardResearchView; onViewChange: (view: DashboardResearchView) => void; expanded?: boolean; onExpand?: () => void }) {
   return <section className={`cc-panel cc-triad-panel ${selectedCompany ? "has-company-selection" : ""} ${expanded ? "cc-panel-expanded" : ""}`}>
-    <CommandPanelHeading eyebrow="CONSTRUCT" title="三方面构造指标" detail={expanded ? "中位数、关注率、分布和跨年变化 · 点击指标联动风险场" : undefined} onExpand={expanded ? undefined : onExpand} expandLabel="展开三方面构造指标"/>
+    <CommandPanelHeading eyebrow="PRIMARY ANALYSIS" title="EAS / EAA-ESI 主分析" detail={expanded ? "行动实质、环境语义差距与验证完整性" : undefined} onExpand={expanded ? undefined : onExpand} expandLabel="展开主分析指标"/>
+    <ResearchViewSwitch value={view} onChange={onViewChange}/>
     <div className="cc-triad-list">{items.map((item) => {
       const Icon = icons[item.code];
       const active = selected === item.code;

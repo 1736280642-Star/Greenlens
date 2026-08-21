@@ -34,7 +34,7 @@ describe("metric contract v2", () => {
 
   it("accepts true raw values outside the normalized 0-1 range", () => {
     expect(() => analysisMetricSchema.parse({ ...metric, code: "ESGSI", rawValue: -0.42, normalizedValue: .31, riskValue: .31, denominator: 20, calculationStatus: "calculated", unavailableReason: undefined })).not.toThrow();
-    expect(() => analysisMetricSchema.parse({ ...metric, code: "EAA_ESGSI", rawValue: 1.24, normalizedValue: .88, riskValue: .88, denominator: 20, calculationStatus: "calculated", unavailableReason: undefined })).not.toThrow();
+    expect(() => analysisMetricSchema.parse({ ...metric, code: "EAA_ESI", rawValue: 1.24, normalizedValue: .88, riskValue: .88, denominator: 20, calculationStatus: "calculated", unavailableReason: undefined })).not.toThrow();
   });
 
   it("validates synthetic company records at the repository boundary", async () => {
@@ -57,7 +57,7 @@ describe("metric contract v2", () => {
       finalIndexRaw: null,
       finalIndex: null,
       riskBand: "unavailable" as const,
-      metrics: company!.metrics.map((item) => item.code === "EAA_ESGSI" ? { ...item, rawValue: null, normalizedValue: null, riskValue: null, calculationStatus: "unavailable" as const, unavailableReason: "最终指数输入不完整" } : item),
+      metrics: company!.metrics.map((item) => item.code === "EAA_ESI" ? { ...item, rawValue: null, normalizedValue: null, riskValue: null, calculationStatus: "unavailable" as const, unavailableReason: "最终指数输入不完整" } : item),
       indexBreakdown: { ...company!.indexBreakdown, finalRaw: null, finalNormalized: null },
       riskClassification: { ...company!.riskClassification, baseRisk: "unavailable" as const, assignedBand: "unavailable" as const, reason: "最终指数输入不完整" },
     };
@@ -67,12 +67,12 @@ describe("metric contract v2", () => {
   it("accepts a backend-assigned risk band without applying fixed .33/.66 rules", async () => {
     const company = await demoRepository.getCompany("cy-materials");
     expect(company).not.toBeNull();
-    const finalMetric = company!.metrics.find((item) => item.code === "EAA_ESGSI")!;
+    const finalMetric = company!.metrics.find((item) => item.code === "EAA_ESI")!;
     const policyAssigned = {
       ...company!,
       finalIndex: .2,
       riskBand: "high" as const,
-      metrics: company!.metrics.map((item) => item.code === "EAA_ESGSI" ? { ...finalMetric, normalizedValue: .2, riskValue: .2 } : item),
+      metrics: company!.metrics.map((item) => item.code === "EAA_ESI" ? { ...finalMetric, normalizedValue: .2, riskValue: .2 } : item),
       indexBreakdown: { ...company!.indexBreakdown, finalNormalized: .2 },
       riskClassification: { ...company!.riskClassification, assignedBand: "high" as const, reason: "基础相对风险与红旗规则返回高风险" },
     };

@@ -28,8 +28,8 @@ test("GreenLens opens AI interpretation with recoverable context", async ({ page
   await page.keyboard.press("Control+J");
 
   await expect(page).toHaveURL(/\/review\?/);
-  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
-  await expect(page.getByText("机器完成指标解释、证据组织和比较；研究人员负责理解语境与使用结论。")).toBeVisible();
+  await expect(page.locator(".interpretation-commandbar")).toHaveCount(0);
+  await expect(page.locator(".context-bar .review-context-actions")).toBeVisible();
 });
 
 test("workflow A: dashboard to structured interpretation and cited evidence", async ({ page }) => {
@@ -39,7 +39,7 @@ test("workflow A: dashboard to structured interpretation and cited evidence", as
   await expect(page.locator(".command-center-eyebrow")).toHaveText("HOLOGRAPHIC EVIDENCE OBSERVATORY");
   await expect(page.locator(".command-center-header h2")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "风险分布概览" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "三方面构造指标" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "EAS / EAA-ESI 主分析" })).toBeVisible();
   const firstTriad = page.locator(".cc-triad-card").first();
   await firstTriad.click();
   await expect(firstTriad).toHaveAttribute("aria-pressed", "true");
@@ -52,7 +52,7 @@ test("workflow A: dashboard to structured interpretation and cited evidence", as
   await expect(page.locator(".cc-company-chip")).toContainText(selectedCompany);
   await page.keyboard.press("Control+J");
   await expect(page).toHaveURL(/\/review\?/);
-  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+  await expect(page.locator(".context-bar .review-context-actions")).toBeVisible();
   await expect(page.getByRole("heading", { name: "证据账本" })).toBeVisible();
   const citation = page.locator(".ledger-sources button").first();
   await expect(citation).toBeVisible();
@@ -70,7 +70,7 @@ test("dashboard risk insights drive the Top 5 review flow", async ({ page }) => 
   await expect(riskFilter).toHaveValue("高风险");
   await expect(page.locator(".cc-kpi-rail .cc-kpi>small, .cc-triad-description, .cc-watch-company small")).toHaveCount(0);
   await riskFilter.selectOption("全部风险");
-  await expect(page.getByRole("heading", { name: "十年风险趋势" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "十年 EAA-ESI 风险趋势" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "行业风险热力" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "红旗统计" })).toBeVisible();
   const canvases = page.locator("canvas:visible");
@@ -85,6 +85,11 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   const errors = monitorConsole(page);
   await page.goto("/dashboard");
 
+  await page.getByRole("button", { name: "全量视图" }).click();
+  await expect(page.getByText(/全量 30 \/ 30 个样本/)).toBeVisible();
+  await page.getByRole("button", { name: "代表视图" }).click();
+  await expect(page.getByText(/代表 30 \/ 30 个样本/)).toBeVisible();
+
   const currentSample = page.getByRole("button", { name: "查看当前样本详情" });
   await currentSample.click();
   await expect(page.getByRole("dialog", { name: "当前样本详情" })).toBeVisible();
@@ -98,9 +103,9 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   const triadPanel = page.locator(".cc-triad-panel");
   await expect(triadPanel.getByText("关注率")).toHaveCount(3);
   await expect(triadPanel.getByText("有效样本")).toHaveCount(3);
-  const triadExpand = page.getByRole("button", { name: "展开三方面构造指标" });
+  const triadExpand = page.getByRole("button", { name: "展开主分析指标" });
   await triadExpand.click();
-  const triadDialog = page.getByRole("dialog", { name: "三方面构造指标完整视图" });
+  const triadDialog = page.getByRole("dialog", { name: "指标体系完整视图" });
   await expect(triadDialog).toBeVisible();
   await expect(triadDialog.getByText("中间 50% 区间")).toHaveCount(3);
   await expect(triadDialog.getByText("趋势覆盖")).toHaveCount(3);
@@ -108,7 +113,7 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   await expect(triadDialog).toHaveCount(0);
   await expect(triadExpand).toBeFocused();
 
-  const trendExpand = page.getByRole("button", { name: "展开十年风险趋势" });
+  const trendExpand = page.getByRole("button", { name: "展开十年 EAA-ESI 风险趋势" });
   await trendExpand.click();
   const trendDialog = page.getByRole("dialog", { name: "十年风险趋势完整视图" });
   await expect(trendDialog).toBeVisible();
@@ -127,17 +132,31 @@ test("dashboard exposes KPI definitions and full module views", async ({ page })
   expect(errors).toEqual([]);
 });
 
+test("dashboard switches primary, GSI, and red-flag research views in place", async ({ page }) => {
+  test.slow();
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "EAS / EAA-ESI 主分析" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "稳健性检验 · GSI" }).click();
+  await expect(page.getByRole("heading", { name: "GSI 稳健性检验" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "十年 GSI 稳健性趋势" })).toBeVisible();
+  await page.getByRole("button", { name: "稳健性检验 · Red flag" }).click();
+  await expect(page.getByRole("heading", { name: "Red flag 稳健性检验" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "十年 Red flag 稳健性趋势" })).toBeVisible();
+  await page.getByRole("button", { name: "主分析 · EAS / EAA-ESI" }).click();
+  await expect(page.getByRole("heading", { name: "EAS / EAA-ESI 主分析" })).toBeVisible();
+});
+
 test("workflow B: report scan completes and opens analysis", async ({ page }) => {
   await page.goto("/reports");
-  await page.getByLabel("虚构公司").selectOption("linhai-energy");
+  await page.getByLabel("关联公司").selectOption("linhai-energy");
   await page.locator('input[type="file"]').setInputFiles({ name: "greenlens-demo.pdf", mimeType: "application/pdf", buffer: Buffer.from("synthetic") });
-  await page.getByRole("button", { name: "开始检测" }).click();
+  await page.getByRole("button", { name: "上传并开始检测" }).click();
   await expect(page.getByRole("heading", { name: "合成分析已生成" })).toBeVisible({ timeout: 10_000 });
   const metricResults = page.locator(".metric-result-strip");
   await expect(metricResults).toContainText("EASS");
   await expect(metricResults).toContainText("IR / UPR");
   await expect(metricResults.locator("strong").nth(2)).toHaveText(/^\d+% \/ \d+%$/);
-  await page.getByRole("button", { name: /打开完整分析/ }).click();
+  await page.getByRole("button", { name: /打开证据分析/ }).click();
   await expect(page.getByRole("heading", { name: "林海能源" })).toBeVisible();
 });
 
@@ -145,25 +164,45 @@ test("report scan supports OCR recovery and explicit extraction failure", async 
   await page.goto("/reports");
   const input = page.locator('input[type="file"]');
   await input.setInputFiles({ name: "scan-demo.pdf", mimeType: "application/pdf", buffer: Buffer.from("synthetic scan") });
-  await page.getByRole("button", { name: "开始检测" }).click();
+  await page.getByRole("button", { name: "上传并开始检测" }).click();
   await expect(page.getByRole("heading", { name: "建议启用 OCR" })).toBeVisible();
   await page.getByRole("button", { name: "启用演示 OCR" }).click();
   await expect(page.getByRole("heading", { name: "合成分析已生成" })).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: /新建检测/ }).click();
   await page.locator('input[type="file"]').setInputFiles({ name: "broken-demo.pdf", mimeType: "application/pdf", buffer: Buffer.from("broken synthetic") });
-  await page.getByRole("button", { name: "开始检测" }).click();
+  await page.getByRole("button", { name: "上传并开始检测" }).click();
   await expect(page.getByRole("heading", { name: "报告检测未完成" })).toBeVisible();
-  await page.getByRole("button", { name: "重新提交演示任务" }).click();
+  await page.getByRole("button", { name: "重试任务" }).click();
   await expect(page.getByRole("heading", { name: "合成分析已生成" })).toBeVisible({ timeout: 10_000 });
 });
 
+for (const viewport of [
+  { name: "reports-1440", width: 1440, height: 900 },
+  { name: "reports-1280", width: 1280, height: 800 },
+]) {
+  test(`report upload remains complete on desktop: ${viewport.name}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/reports");
+    await expect(page.getByRole("heading", { name: "报告检测", level: 2 })).toBeVisible();
+    await expect(page.getByRole("button", { name: "上传并开始检测" })).toBeVisible();
+    const geometry = await page.evaluate(() => ({
+      horizontal: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      uploadBottom: document.querySelector<HTMLElement>(".report-setup")?.getBoundingClientRect().bottom ?? 0,
+    }));
+    expect(geometry.horizontal).toBeLessThanOrEqual(1);
+    expect(geometry.uploadBottom).toBeLessThanOrEqual(viewport.height + 1);
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
+  });
+}
+
 test("interpretation supports comparison, export, and problem reporting", async ({ page }) => {
-  await page.goto("/compare");
-  await expect(page.getByText("核心指标 Dumbbell 对比")).toBeVisible();
-  await page.getByRole("tab", { name: "行动构成" }).click();
-  await expect(page.getByText("环境行动分类构成")).toBeVisible();
   await page.goto("/review");
-  await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+  await expect(page.locator(".context-bar .review-context-actions")).toBeVisible();
+  const removeFromComparison = page.getByRole("button", { name: "移出对比" });
+  if (await removeFromComparison.isVisible()) {
+    await removeFromComparison.click();
+    await expect(page.getByText("已移出对比", { exact: true })).toBeVisible();
+  }
   await page.getByRole("button", { name: "加入对比" }).click();
   await expect(page.getByText("已加入对比", { exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
@@ -177,6 +216,48 @@ test("interpretation supports comparison, export, and problem reporting", async 
   await expect(page.getByText("解读问题已记录，将进入异常与质量处置", { exact: true })).toBeVisible();
 });
 
+test("company comparison is entered only from the enterprise library", async ({ page }) => {
+  await page.goto("/companies");
+  await expect(page.getByRole("link", { name: "对比", exact: true })).toHaveCount(0);
+  const comparisonCandidates = page.locator('tbody input[type="checkbox"]');
+  await comparisonCandidates.nth(0).check();
+  await comparisonCandidates.nth(1).check();
+  await page.getByRole("link", { name: "开始对比" }).click();
+  await expect(page).toHaveURL(/\/companies\?view=compare&year=\d{4}&companies=/);
+  await expect(page.getByRole("heading", { name: "企业对比结果" })).toBeVisible();
+  await expect(page.getByText("核心指标 Dumbbell 对比")).toBeVisible();
+  await expect(page.getByText("环境行动分类构成")).toBeVisible();
+  await expect(page.getByText("真实报告与事件时间线")).toBeVisible();
+  await expect(page.getByText(/^行动原文 \d+\/\d+$/)).toBeVisible();
+  await expect(page.locator(".timeline-report-marker")).not.toHaveCount(0);
+  await expect(page.locator(".timeline-event-marker")).not.toHaveCount(0);
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "企业对比结果" })).toBeVisible();
+});
+
+for (const viewport of [
+  { name: "compare-1440", width: 1440, height: 900 },
+  { name: "compare-1280", width: 1280, height: 800 },
+]) {
+  test(`comparison keeps all three charts in one screen: ${viewport.name}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/companies?view=compare&year=2025&companies=cy-materials,linhai-energy,qiming-mobility,beichen-foods,yuanfang-tech");
+    for (const heading of ["核心指标 Dumbbell 对比", "环境行动分类构成", "真实报告与事件时间线"]) {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
+    const layout = await page.evaluate(() => ({
+      horizontal: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      vertical: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      panels: [...document.querySelectorAll<HTMLElement>(".comparison-charts .panel")].map((panel) => panel.getBoundingClientRect().bottom),
+    }));
+    expect(layout.horizontal).toBeLessThanOrEqual(1);
+    expect(layout.vertical).toBeLessThanOrEqual(1);
+    layout.panels.forEach((bottom) => expect(bottom).toBeLessThanOrEqual(viewport.height + 1));
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`), fullPage: true });
+  });
+}
+
 for (const viewport of [
   { name: "review-1440", width: 1440, height: 900 },
   { name: "review-1280", width: 1280, height: 800 },
@@ -184,7 +265,7 @@ for (const viewport of [
   test(`AI interpretation stays actionable in one screen: ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.goto("/review");
-    await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toBeVisible();
+    await expect(page.locator(".context-bar .review-context-actions")).toBeVisible();
     await expect(page.getByRole("complementary", { name: "重点解读公司" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "证据账本" })).toBeVisible();
     await expect(page.getByRole("button", { name: "导出摘要" })).toBeVisible();
@@ -198,16 +279,27 @@ for (const viewport of [
 test("manual handling is isolated to data-quality exceptions", async ({ page }) => {
   await page.goto("/data-sources/review");
   await expect(page.getByRole("heading", { name: "异常与质量处置", level: 2 })).toBeVisible();
-  await expect(page.getByText("只处理解析、关联、年份和低置信度异常；风险高低不直接产生人工任务。")).toBeVisible();
+  await expect(page.getByText("只处理解析、关联、年份和低置信度异常；风险高低不直接产生人工任务。")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "AI 风险解读", level: 2 })).toHaveCount(0);
 });
 
-test("company library paginates 30 records and applies column settings", async ({ page }) => {
+test("data source separates PDF parsing from evidence linkage", async ({ page }) => {
+  await page.goto("/data-sources");
+  await expect(page.getByRole("heading", { name: "PDF 证据处理漏斗" })).toBeVisible();
+  for (const stage of ["PDF 已完成", "正文可读取", "身份已确认", "证据已抽取", "公司年度已关联"]) {
+    await expect(page.getByText(stage, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("button", { name: "预检查缺失证据" })).toBeVisible();
+  await expect(page.getByText("重建直接复用 SQLite 中的分页正文，不会重新下载 PDF，也不会重新执行 OCR。")).toBeVisible();
+});
+
+test("company library paginates 30 records in 20-row pages and applies column settings", async ({ page }) => {
   await page.goto("/companies");
-  await expect(page.getByText("共 30 家 · 每页 10 条")).toBeVisible();
-  await expect(page.getByText("第 1 / 3 页")).toBeVisible();
+  await expect(page.locator(".companies-table tbody tr")).toHaveCount(20);
+  await expect(page.getByText("第 1 / 2 页")).toBeVisible();
   await page.getByRole("button", { name: "下一页" }).click();
-  await expect(page.getByText("第 2 / 3 页")).toBeVisible();
+  await expect(page.getByText("第 2 / 2 页")).toBeVisible();
+  await expect(page.locator(".companies-table tbody tr")).toHaveCount(10);
   await page.getByRole("button", { name: "列设置" }).click();
   await page.getByRole("checkbox", { name: "行业" }).uncheck();
   await expect(page.getByRole("columnheader", { name: "行业" })).toHaveCount(0);
@@ -227,7 +319,7 @@ test("report-year filters query the repository and recover from empty results", 
   await page.getByLabel("报告年").selectOption("2024");
   await expect(page.getByRole("heading", { name: "当前筛选下没有公司记录" })).toBeVisible();
   await page.getByRole("button", { name: "恢复默认视图" }).click();
-  await expect(page.getByText("共 30 家 · 每页 10 条")).toBeVisible();
+  await expect(page.locator(".companies-table tbody tr")).toHaveCount(20);
 });
 
 test("dashboard paints the risk distribution canvas on initial render", async ({ page }) => {

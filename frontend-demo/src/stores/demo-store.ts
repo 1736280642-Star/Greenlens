@@ -32,6 +32,7 @@ interface DemoState {
   selectCompany: (id: string | null, reportYear?: number | null) => void;
   selectEvidence: (id: string | null) => void;
   toggleCompare: (id: string) => boolean;
+  setCompareIds: (ids: string[]) => void;
   clearCompare: () => void;
   openDrawer: (drawer: Drawer) => void;
   notify: (title: string, detail: string) => void;
@@ -79,6 +80,7 @@ export const useDemoStore = create<DemoState>()(
         set({ compareIds: [...ids, id] });
         return true;
       },
+      setCompareIds: (compareIds) => set({ compareIds: [...new Set(compareIds)].slice(0, 5) }),
       clearCompare: () => set({ compareIds: [] }),
       openDrawer: (drawer) => set({ drawer }),
       notify: (title, detail) => set((state) => ({

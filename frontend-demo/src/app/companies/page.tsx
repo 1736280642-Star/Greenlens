@@ -2,13 +2,23 @@
 
 import { flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, type ColumnDef, type SortingState, type VisibilityState, useReactTable } from "@tanstack/react-table";
 import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUpDown, Download, GitCompareArrows, RefreshCw, Save, Search, Settings2, X } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { analysisRepository } from "@/repositories";
+import { CompanyComparison } from "@/components/company-comparison";
 import { useDemoStore, defaultYear } from "@/stores/demo-store";
 import { formatPercent, metricPercent, type CompanyYearRecord } from "@/types";
 
 export default function CompaniesPage() {
+  return <Suspense fallback={<div className="page"><div className="skeleton skeleton-header"/><div className="panel skeleton-panel"/></div>}><CompaniesRoute /></Suspense>;
+}
+
+function CompaniesRoute() {
+  const searchParams = useSearchParams();
+  return searchParams.get("view") === "compare" ? <CompanyComparison /> : <CompanyLibrary />;
+}
+
+function CompanyLibrary() {
   const router = useRouter();
   const [data, setData] = useState<CompanyYearRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +47,7 @@ export default function CompaniesPage() {
     { accessorKey: "companyName", header: "公司", cell: ({ row }) => <button className="company-link" onClick={() => router.push(`/companies/${row.original.companyId}?year=${row.original.reportYear}`)}><strong>{row.original.companyName}</strong><small>{row.original.stockCode}</small></button> },
     { accessorKey: "industry", header: "行业" },
     { accessorKey: "reportYear", header: "年度" },
-    { accessorKey: "finalIndex", header: "E-AA-ESGSI", cell: ({ getValue }) => <span className="risk-score">{formatPercent(getValue<number | null>())}</span> },
+    { accessorKey: "finalIndex", header: "EAA-ESI", cell: ({ getValue }) => <span className="risk-score">{formatPercent(getValue<number | null>())}</span> },
     { id: "eass", accessorFn: (row) => metricPercent(row, "EASS"), header: "EASS", cell: ({ getValue }) => <span>{formatTablePercent(getValue<number | null>())}</span> },
     { id: "ir", accessorFn: (row) => metricPercent(row, "IR"), header: "IR", cell: ({ getValue }) => <span>{formatTablePercent(getValue<number | null>())}</span> },
     { id: "upr", accessorFn: (row) => metricPercent(row, "UPR"), header: "UPR", cell: ({ getValue }) => <span>{formatTablePercent(getValue<number | null>())}</span> },
@@ -48,11 +58,11 @@ export default function CompaniesPage() {
   ], [compareIds, router, showToast, toggleCompare]);
   // TanStack Table intentionally returns non-memoizable functions; React Compiler skips this hook.
   // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({ data, columns, state: { sorting, globalFilter: query, columnVisibility }, initialState: { pagination: { pageIndex: 0, pageSize: 10 } }, onSortingChange: setSorting, onGlobalFilterChange: setQuery, onColumnVisibilityChange: setColumnVisibility, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getFilteredRowModel: getFilteredRowModel(), getPaginationRowModel: getPaginationRowModel(), globalFilterFn: (row, _column, value) => `${row.original.companyName}${row.original.stockCode}${row.original.industry}`.toLowerCase().includes(String(value).toLowerCase()) });
+  const table = useReactTable({ data, columns, state: { sorting, globalFilter: query, columnVisibility }, initialState: { pagination: { pageIndex: 0, pageSize: 20 } }, onSortingChange: setSorting, onGlobalFilterChange: setQuery, onColumnVisibilityChange: setColumnVisibility, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getFilteredRowModel: getFilteredRowModel(), getPaginationRowModel: getPaginationRowModel(), globalFilterFn: (row, _column, value) => `${row.original.companyName}${row.original.stockCode}${row.original.industry}`.toLowerCase().includes(String(value).toLowerCase()) });
 
   function exportCsv() {
     const rows = table.getFilteredRowModel().rows.map(({ original }) => [original.companyName, original.stockCode, original.industry, original.finalIndex ?? "", metricPercent(original,"EASS") ?? "", metricPercent(original,"IR") ?? "", metricPercent(original,"UPR") ?? "", original.evidenceCoverage]);
-    const content = [["风险结果用于研究筛查，不构成企业漂绿认定"], ["公司", "证券代码", "行业", "E-AA-ESGSI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
+    const content = [["风险结果用于研究筛查，不构成企业漂绿认定"], ["公司", "证券代码", "行业", "EAA-ESI", "EASS", "IR", "UPR", "证据覆盖"], ...rows].map((row) => row.join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\ufeff" + content], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "greenlens-companies.csv"; anchor.click(); URL.revokeObjectURL(url);
     notify("企业视图已导出", `导出 ${rows.length} 条当前数据记录。`); showToast("企业视图已导出");
@@ -63,10 +73,9 @@ export default function CompaniesPage() {
   if (!data.length) return <div className="state-panel"><Search size={24}/><h2>当前筛选下没有公司记录</h2><p>当前报告年、行业或风险组合没有可分析的公司-年份样本。</p><button className="primary-button" onClick={() => setFilters({ year: defaultYear, industry: "全部行业", risk: "全部风险" })}><RefreshCw size={15}/>恢复默认视图</button></div>;
 
   return <div className="page companies-page">
-    <header className="page-header"><div><h2>企业库</h2><p>按行动实质性、模糊声明、未验证计划和最终指数筛选合成公司。</p></div><div className="header-actions"><button className="secondary-button" onClick={() => setSaveOpen(true)}><Save size={15}/>保存视图</button><div className="column-settings"><button className="secondary-button" onClick={() => setColumnMenu(!columnMenu)} aria-expanded={columnMenu}><Settings2 size={15}/>列设置</button>{columnMenu && <div className="column-menu" role="dialog" aria-label="列设置"><strong>显示列</strong>{table.getAllLeafColumns().filter((column) => !["select", "companyName"].includes(column.id)).map((column) => <label key={column.id}><input type="checkbox" checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()}/><span>{String(column.columnDef.header)}</span></label>)}</div>}</div><button className="secondary-button" onClick={exportCsv}><Download size={15}/>导出</button></div></header>
-    <section className="table-toolbar"><label className="search-field"><Search size={17}/><input value={query} onChange={(event) => { setQuery(event.target.value); table.setPageIndex(0); }} placeholder="搜索公司、虚构代码或行业" /></label><span>共 {table.getFilteredRowModel().rows.length} 家 · 每页 10 条</span></section>
+    <section className="table-toolbar company-workbench-toolbar" aria-label="公司列表工具栏"><label className="search-field"><Search size={17}/><input value={query} onChange={(event) => { setQuery(event.target.value); table.setPageIndex(0); }} placeholder="搜索公司、虚构代码或行业" /></label><div className="header-actions"><button className="secondary-button" onClick={() => setSaveOpen(true)}><Save size={15}/>保存视图</button><div className="column-settings"><button className="secondary-button" onClick={() => setColumnMenu(!columnMenu)} aria-expanded={columnMenu}><Settings2 size={15}/>列设置</button>{columnMenu && <div className="column-menu" role="dialog" aria-label="列设置"><strong>显示列</strong>{table.getAllLeafColumns().filter((column) => !["select", "companyName"].includes(column.id)).map((column) => <label key={column.id}><input type="checkbox" checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()}/><span>{String(column.columnDef.header)}</span></label>)}</div>}</div><button className="secondary-button" onClick={exportCsv}><Download size={15}/>导出</button></div></section>
     <section className="panel"><div className="data-table-wrap"><table className="data-table companies-table"><thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id}>{header.isPlaceholder ? null : <button className="sort-header" onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getCanSort() && <ArrowUpDown size={12}/>}</button>}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={compareIds.includes(row.original.companyId) ? "selected" : ""}>{row.getVisibleCells().map((cell) => <td key={cell.id} className={["finalIndex","eass","ir","upr","imbalance","evidenceCoverage"].includes(cell.column.id) ? "numeric" : ""}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table></div><footer className="table-pagination"><span>第 {table.getState().pagination.pageIndex + 1} / {Math.max(1, table.getPageCount())} 页</span><div><button className="icon-button" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="上一页" title="上一页"><ArrowLeft/></button><button className="icon-button" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="下一页" title="下一页"><ArrowRight/></button></div></footer></section>
-    {compareIds.length > 0 && <div className="compare-bar"><span>已选 <strong>{compareIds.length}</strong> 家</span><button className="text-button" onClick={clearCompare}>清除</button><button className="primary-button" disabled={compareIds.length < 2} title={compareIds.length < 2 ? "至少选择 2 家企业" : undefined} onClick={() => router.push(`/compare?companies=${compareIds.join(",")}`)}><GitCompareArrows size={15}/>加入对比</button></div>}
+    {compareIds.length > 0 && <div className="compare-bar"><span>已选 <strong>{compareIds.length}</strong> 家</span><button className="text-button" onClick={clearCompare}>清除</button>{compareIds.length < 2 ? <button className="primary-button" disabled title="至少选择 2 家企业"><GitCompareArrows size={15}/>开始对比</button> : <a className="primary-button" href={`/companies?view=compare&year=${year}&companies=${compareIds.join(",")}`}><GitCompareArrows size={15}/>开始对比</a>}</div>}
     {saveOpen && <div className="modal-scrim"><section className="modal" role="dialog" aria-modal="true" aria-label="保存视图"><header><h3>保存当前视图</h3><button className="icon-button" onClick={() => setSaveOpen(false)} aria-label="关闭"><X/></button></header><div className="modal-body"><label className="field-label"><span>视图名称</span><input autoFocus value={viewName} onChange={(event) => setViewName(event.target.value)} placeholder="例如：2025 高优先级样本" /></label></div><footer><button className="secondary-button" onClick={() => setSaveOpen(false)}>取消</button><button className="primary-button" disabled={!viewName.trim()} onClick={() => { setSaveOpen(false); showToast(`已保存视图“${viewName}”`); }}>保存视图</button></footer></section></div>}
   </div>;
 }

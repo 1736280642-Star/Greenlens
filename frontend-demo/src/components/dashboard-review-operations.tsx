@@ -17,8 +17,8 @@ const factorLabels: Record<MetricCode, string> = {
   EASS: "EASS 缺口",
   IR: "模糊声明比例",
   UPR: "未验证计划比例",
-  ESGSI: "ESGSI",
-  EAA_ESGSI: "E-AA-ESGSI",
+  ESGSI: "ESI",
+  EAA_ESI: "EAA-ESI",
   IMBALANCE: "ESG 失衡",
 };
 
@@ -148,7 +148,7 @@ export function DashboardReviewOperations({ companies, insights, selectedFactor,
       </section>
 
       {!compact && <section className="dashboard-band dense-band governance-band" aria-labelledby="governance-title">
-        <header className="dashboard-band-heading"><div><span className="section-kicker">MODEL & DATA GOVERNANCE</span><h2 id="governance-title">复核一致性与来源新鲜度</h2></div><span className="band-context">EAA-ESGSI-DEMO-2.0 · 合成样本</span></header>
+        <header className="dashboard-band-heading"><div><span className="section-kicker">MODEL & DATA GOVERNANCE</span><h2 id="governance-title">复核一致性与来源新鲜度</h2></div><span className="band-context">EAA-ESI-DEMO-2.0 · 合成样本</span></header>
         <div className="governance-grid">
           <section className="insight-panel agreement-panel"><header><div><h3>模型 × 人工决定</h3><p>分歧不是失败，是下一轮校准样本</p></div><span>近 30 日</span></header><div ref={agreementRef} className="agreement-chart" role="img" aria-label="模型与人工决定一致性图" /></section>
           <section className="insight-panel freshness-panel"><header><div><h3>数据来源新鲜度</h3><p>覆盖不足或过期会降低可判定性</p></div><span>{insights.sourceFreshness.filter((source) => source.status !== "fresh").length} 项关注</span></header><div className="freshness-list">{insights.sourceFreshness.map((source) => <div className="freshness-row" key={source.source}><span className={`freshness-dot ${source.status}`} /><span className="freshness-name"><strong>{source.source}</strong><small>{source.daysOld} 天前更新</small></span><span className="freshness-meter"><i style={{ width: `${source.coverage}%` }} /></span><code>{source.coverage}%</code></div>)}</div><footer><span><i className="freshness-dot fresh" />≤ 30 天</span><span><i className="freshness-dot watch" />31-60 天</span><span><i className="freshness-dot stale" />&gt; 60 天</span></footer></section>

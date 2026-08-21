@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Database, Download, Radar, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Download, Radar, RefreshCw, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AnnualRiskTrend } from "./annual-risk-trend";
@@ -8,6 +8,8 @@ import { DashboardDetailDialog } from "./dashboard-detail-dialog";
 import { IndustryRiskHeatmap } from "./industry-risk-heatmap";
 import { KpiRail } from "./kpi-rail";
 import { MetricTriad } from "./metric-triad";
+import { GsiRobustnessPanel } from "./gsi-robustness-panel";
+import { RedFlagRobustnessPanel } from "./red-flag-robustness-panel";
 import { PersistentRiskList } from "./persistent-risk-list";
 import { RedFlagQuality } from "./red-flag-quality";
 import { RiskBreakdownWaterfall } from "./risk-breakdown-waterfall";
@@ -15,7 +17,7 @@ import { RiskDistributionHexbin } from "./risk-distribution-hexbin";
 import { SectorRiskPanel } from "./sector-risk-panel";
 import { analysisRepository, type DemoScenario } from "@/repositories";
 import { useDemoStore, defaultYear } from "@/stores/demo-store";
-import { formatPercent, type DashboardCommandCenterData, type DashboardTriadCode, type SampleGroup } from "@/types";
+import { formatPercent, type DashboardCommandCenterData, type DashboardConstellationNode, type DashboardResearchView, type DashboardTriadCode, type SampleGroup } from "@/types";
 
 const riskBandByLabel: Record<string, string | undefined> = {
   全部风险: undefined,
@@ -28,13 +30,13 @@ const riskBandByLabel: Record<string, string | undefined> = {
 type ExpandedPanel = "triad" | "constellation" | "watchlist" | "trend" | "heatmap" | "audit" | "waterfall";
 
 const expandedPanelTitles: Record<ExpandedPanel, string> = {
-  triad: "三方面构造指标",
+  triad: "指标体系",
   constellation: "风险分布概览",
   watchlist: "持续高风险公司",
   trend: "十年风险趋势",
   heatmap: "行业风险热力",
   audit: "红旗与数据质量",
-  waterfall: "E-AA-ESGSI 构成",
+  waterfall: "EAA-ESI 构成",
 };
 
 function formatTimestamp(iso: string) {
@@ -50,19 +52,27 @@ export function DashboardCommandCenter() {
   const scenario = (params.get("scenario") ?? "success") as DemoScenario;
   const { year, industry, risk, sampleGroup, selectedCompanyId, setFilters, selectCompany, toggleCompare, notify, showToast } = useDemoStore();
   const [data, setData] = useState<DashboardCommandCenterData | null>(null);
-  const [fullConstellation, setFullConstellation] = useState<DashboardCommandCenterData | null>(null);
+  const [constellationMode, setConstellationMode] = useState<"representative" | "full">("representative");
+  const [fullConstellation, setFullConstellation] = useState<{ key: string; nodes: DashboardConstellationNode[] } | null>(null);
+  const [constellationLoading, setConstellationLoading] = useState(false);
   const [selectedFactor, setSelectedFactor] = useState<DashboardTriadCode | null>(null);
+  const [researchView, setResearchView] = useState<DashboardResearchView>("primary");
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel | null>(null);
   const expandedTrigger = useRef<HTMLButtonElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const trendData = (data?.annualTrend ?? []).filter((item) => item.year >= 2016);
+  const trendStartYear = (data?.scope.reportYear ?? year) - 9;
+  const trendData = (data?.annualTrend ?? []).filter((item) => item.year >= trendStartYear);
+  const gsiTrendData = data ? { ...data.gsiRobustness, metrics: data.gsiRobustness.metrics.map((metric) => ({ ...metric, history: metric.history.filter((item) => item.year >= trendStartYear) })) } : null;
+  const redFlagTrendData = (data?.redFlagTrend ?? []).filter((item) => item.year >= trendStartYear);
   const availableYears = data?.scope.availableReportYears ?? [];
+  const constellationKey = JSON.stringify({ year, industry, risk, sampleGroup, scenario });
+  const fullConstellationNodes = fullConstellation?.key === constellationKey ? fullConstellation.nodes : null;
+  const effectiveConstellationMode = constellationMode === "full" && fullConstellationNodes ? "full" : "representative";
 
   useEffect(() => {
     let active = true;
-    Promise.resolve().then(() => { if (active) { setLoading(true); setError(null); } });
-    analysisRepository.getDashboardCommandCenter(scenario, {
+    const load = () => analysisRepository.getDashboardCommandCenter(scenario, {
       year,
       industry: industry === "全部行业" ? undefined : industry,
       riskBand: riskBandByLabel[risk],
@@ -71,26 +81,35 @@ export function DashboardCommandCenter() {
     }).then((result) => {
       if (!active) return;
       setData(result);
-      setFullConstellation(null);
       if (result.scope.reportYear !== year) setFilters({ year: result.scope.reportYear });
     })
-      .catch((reason: Error) => { if (active) setError(reason.message); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .catch((reason: Error) => { if (active) setError(reason.message); });
+
+    Promise.resolve().then(() => { if (active) { setLoading(true); setError(null); } });
+    void load().finally(() => { if (active) setLoading(false); });
+    const timer = window.setInterval(() => { void load(); }, 30_000);
+    return () => { active = false; window.clearInterval(timer); };
   }, [industry, risk, sampleGroup, scenario, setFilters, year]);
 
-  useEffect(() => {
-    if (expandedPanel !== "constellation" || fullConstellation) return;
-    let active = true;
-    analysisRepository.getDashboardCommandCenter(scenario, {
+  async function handleConstellationMode(nextMode: "representative" | "full") {
+    setConstellationMode(nextMode);
+    if (nextMode === "representative" || fullConstellationNodes) return;
+    setConstellationLoading(true);
+    try {
+      const result = await analysisRepository.getDashboardConstellation(scenario, {
       year,
       industry: industry === "全部行业" ? undefined : industry,
       riskBand: riskBandByLabel[risk],
       sampleGroup: sampleGroup === "all" ? undefined : sampleGroup,
-    }).then((result) => { if (active) setFullConstellation(result); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [expandedPanel, fullConstellation, industry, risk, sampleGroup, scenario, year]);
+      });
+      setFullConstellation({ key: constellationKey, nodes: result });
+    } catch (reason) {
+      setConstellationMode("representative");
+      showToast(`全量星图加载失败：${reason instanceof Error ? reason.message : "未知错误"}`);
+    } finally {
+      setConstellationLoading(false);
+    }
+  }
 
   function exportSnapshot() {
     if (!data) return;
@@ -98,12 +117,11 @@ export function DashboardCommandCenter() {
       `数据版本：${data.scope.dataVersion}。风险结果用于研究筛查，不构成企业漂绿认定。`,
       "",
       "GreenLens Dashboard Command Center",
-      `Metric contract: metric-contract-v2`,
       `报告年度：${data.scope.reportYear}`,
       `当前样本：${data.kpis.sampleCount}`,
       `高风险：${data.kpis.highRiskCount}`,
       `三年持续高风险：${data.kpis.persistentHighRiskCount}`,
-      `E-AA 中位数：${formatPercent(data.kpis.medianFinalIndex)}`,
+      `EAA-ESI 中位数：${formatPercent(data.kpis.medianFinalIndex)}`,
       `证据不足：${data.kpis.insufficientEvidenceCount}`,
     ].join("\n");
     const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
@@ -112,7 +130,7 @@ export function DashboardCommandCenter() {
     anchor.download = `greenlens-command-center-${new Date().toISOString().slice(0, 10)}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
-    notify("Dashboard 快照已导出", `导出内容使用 metric-contract-v2 和 ${data.scope.dataVersion}。`);
+    notify("Dashboard 快照已导出", `导出内容使用数据版本 ${data.scope.dataVersion}。`);
     showToast("Dashboard 快照已导出");
   }
 
@@ -129,13 +147,25 @@ export function DashboardCommandCenter() {
     setExpandedPanel(panel);
   }
 
+  function handleResearchViewChange(nextView: DashboardResearchView) {
+    setResearchView(nextView);
+    if (nextView !== "primary") setSelectedFactor(null);
+  }
+
+  function renderResearchPanel(selectedNode: NonNullable<DashboardCommandCenterData>["riskNodes"][number] | null, expanded = false) {
+    if (!data) return null;
+    if (researchView === "gsi") return <GsiRobustnessPanel data={data.gsiRobustness} selectedCompany={selectedNode} view={researchView} onViewChange={handleResearchViewChange} expanded={expanded} onExpand={expanded ? undefined : () => openExpandedPanel("triad")}/>;
+    if (researchView === "red_flags") return <RedFlagRobustnessPanel nodes={data.riskNodes} trend={redFlagTrendData} selectedCompany={selectedNode} view={researchView} onViewChange={handleResearchViewChange} expanded={expanded} onExpand={expanded ? undefined : () => openExpandedPanel("triad")}/>;
+    return <MetricTriad items={data.metricTriad} nodes={data.riskNodes} selectedCompany={selectedNode} selected={selectedFactor} onSelect={setSelectedFactor} view={researchView} onViewChange={handleResearchViewChange} expanded={expanded} onExpand={expanded ? undefined : () => openExpandedPanel("triad")}/>;
+  }
+
   function renderExpandedPanel() {
     if (!data || !expandedPanel) return null;
     const selectedNode = selectedCompanyId ? data.riskNodes.find((n) => n.companyId === selectedCompanyId) ?? data.persistentRisks.find((n) => n.companyId === selectedCompanyId) ?? null : null;
-    if (expandedPanel === "triad") return <MetricTriad items={data.metricTriad} nodes={data.riskNodes} selectedCompany={selectedNode} selected={selectedFactor} onSelect={setSelectedFactor} expanded/>;
-    if (expandedPanel === "constellation") return <RiskDistributionHexbin nodes={fullConstellation?.riskNodes ?? data.riskNodes} selectedFactor={selectedFactor} selectedCompanyId={selectedCompanyId} onSelect={handleCompanySelect} onOpen={(companyId) => router.push(`/companies/${companyId}?year=${year}`)} expanded/>;
+    if (expandedPanel === "triad") return renderResearchPanel(selectedNode, true);
+    if (expandedPanel === "constellation") return <RiskDistributionHexbin nodes={effectiveConstellationMode === "full" && fullConstellationNodes ? fullConstellationNodes : data.riskNodes} selectedFactor={selectedFactor} selectedCompanyId={selectedCompanyId} onSelect={handleCompanySelect} onOpen={(companyId) => router.push(`/companies/${companyId}?year=${year}`)} expanded datasetMode={effectiveConstellationMode} onDatasetModeChange={handleConstellationMode} datasetLoading={constellationLoading} totalSampleCount={data.kpis.sampleCount}/>;
     if (expandedPanel === "watchlist") return <PersistentRiskList items={data.persistentRisks} selectedCompanyId={selectedCompanyId} onSelect={(companyId) => handleCompanySelect(companyId)} onCompare={(companyId) => handleCompanySelect(companyId, true)} expanded/>;
-    if (expandedPanel === "trend") return <AnnualRiskTrend data={trendData} expanded/>;
+    if (expandedPanel === "trend") return <AnnualRiskTrend view={researchView} primaryData={trendData} gsiData={gsiTrendData ?? data.gsiRobustness} redFlagData={redFlagTrendData} expanded/>;
     if (expandedPanel === "heatmap") return <IndustryRiskHeatmap data={data.industryRisk} selectedFactor={selectedFactor} onSelectIndustry={(nextIndustry) => setFilters({ industry: nextIndustry })} expanded/>;
     if (expandedPanel === "audit") return <RedFlagQuality flags={data.redFlagDistribution} quality={data.quality} expanded/>;
     return <RiskBreakdownWaterfall cohort={data.medianBreakdown} selectedCompany={selectedNode} expanded/>;
@@ -153,7 +183,6 @@ export function DashboardCommandCenter() {
       <label><span>行业</span><select value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{[...new Set(data.industryRisk.map((item) => item.industry))].filter(Boolean).sort((a, b) => a.localeCompare(b, "zh-CN")).map((item) => <option key={item}>{item}</option>)}</select></label>
       <label><span>风险</span><select value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
       <label><span>样本口径</span><select value={sampleGroup} onChange={(event) => setFilters({ sampleGroup: event.target.value as "all" | SampleGroup })}><option value="all">全部样本</option><option value="main_n_ge_20">主分析 N≥20</option><option value="robustness_n_10_19">稳健性 N10–19</option><option value="low_n_lt_10">低句数 N&lt;10</option></select></label>
-      <span className="command-center-contract" title={`${data.scope.dataVersion} · metric-contract-v2`}><Database size={13}/>metric-contract-v2</span>
       <div className="command-center-toolbar-actions">
         <span className={`command-center-data-state ${data.kpis.qualityAlertCount ? "warning" : "ready"}`}><i/>{data.kpis.qualityAlertCount ? `${data.kpis.qualityAlertCount} 项质量提醒` : "数据就绪"}</span>
         <button className="cc-secondary-button" onClick={exportSnapshot}><Download size={15}/>导出快照</button>
@@ -164,13 +193,13 @@ export function DashboardCommandCenter() {
     <KpiRail data={data}/>
 
     <div className="cc-primary-grid">
-      <MetricTriad items={data.metricTriad} nodes={data.riskNodes} selectedCompany={selectedCompanyId ? data.riskNodes.find((n) => n.companyId === selectedCompanyId) ?? data.persistentRisks.find((n) => n.companyId === selectedCompanyId) ?? null : null} selected={selectedFactor} onSelect={setSelectedFactor} onExpand={() => openExpandedPanel("triad")}/>
-      <RiskDistributionHexbin nodes={data.riskNodes} selectedFactor={selectedFactor} selectedCompanyId={selectedCompanyId} onSelect={handleCompanySelect} onOpen={(companyId) => router.push(`/companies/${companyId}?year=${year}`)} onExpand={() => openExpandedPanel("constellation")}/>
+      {renderResearchPanel(selectedCompanyId ? data.riskNodes.find((n) => n.companyId === selectedCompanyId) ?? data.persistentRisks.find((n) => n.companyId === selectedCompanyId) ?? null : null)}
+      <RiskDistributionHexbin nodes={effectiveConstellationMode === "full" && fullConstellationNodes ? fullConstellationNodes : data.riskNodes} selectedFactor={selectedFactor} selectedCompanyId={selectedCompanyId} onSelect={handleCompanySelect} onOpen={(companyId) => router.push(`/companies/${companyId}?year=${year}`)} onExpand={() => openExpandedPanel("constellation")} datasetMode={effectiveConstellationMode} onDatasetModeChange={handleConstellationMode} datasetLoading={constellationLoading} totalSampleCount={data.kpis.sampleCount}/>
       <PersistentRiskList items={data.persistentRisks} selectedCompanyId={selectedCompanyId} onSelect={(companyId) => handleCompanySelect(companyId)} onCompare={(companyId) => handleCompanySelect(companyId, true)} onExpand={() => openExpandedPanel("watchlist")}/>
     </div>
 
     <div className="cc-bottom-grid">
-      <AnnualRiskTrend data={trendData} onExpand={() => openExpandedPanel("trend")}/>
+      <AnnualRiskTrend view={researchView} primaryData={trendData} gsiData={gsiTrendData ?? data.gsiRobustness} redFlagData={redFlagTrendData} onExpand={() => openExpandedPanel("trend")}/>
       <SectorRiskPanel
         industryRisk={data.industryRisk}
         selectedFactor={selectedFactor}
@@ -200,7 +229,7 @@ export function DashboardCommandCenter() {
 }
 
 function CommandCenterLoading() {
-  return <div className="command-center-page cc-loading"><div className="cc-loading-header"/><div className="cc-kpi-rail">{Array.from({ length: 6 }, (_, index) => <span key={index}/>)}</div><div className="cc-primary-grid"><span/><span/><span/></div><div className="cc-bottom-grid"><span/><span/><span/></div></div>;
+  return <div className="command-center-page cc-loading"><div className="cc-loading-header"/><div className="cc-kpi-rail">{Array.from({ length: 5 }, (_, index) => <span key={index}/>)}</div><div className="cc-primary-grid"><span/><span/><span/></div><div className="cc-bottom-grid"><span/><span/><span/></div></div>;
 }
 
 function CommandCenterState({ icon, title, detail, action, onAction }: { icon: React.ReactNode; title: string; detail: string; action: string; onAction: () => void }) {

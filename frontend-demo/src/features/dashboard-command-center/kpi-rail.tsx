@@ -129,7 +129,7 @@ export function KpiRail({ data }: { data: DashboardCommandCenterData }) {
       value: data.kpis.highRiskCount.toLocaleString(),
       context: `占样本 ${formatPercent(data.kpis.sampleCount ? data.kpis.highRiskCount / data.kpis.sampleCount : null)}`,
       note: "版本化分类",
-      definition: "依据 metric-contract-v2 风险阈值进入高风险带、需要优先复核的样本数。",
+      definition: "依据当前版本化风险阈值进入高风险带、需要优先复核的样本数。",
       tone: "coral",
       trend: highTrend,
       delta: lastDelta(highTrend),
@@ -149,52 +149,16 @@ export function KpiRail({ data }: { data: DashboardCommandCenterData }) {
       chart: "area",
     },
     {
-      label: "E-AA 中位数",
+      label: "EAA-ESI 中位数",
       value: formatPercent(data.kpis.medianFinalIndex),
       context: `高风险率 ${formatPercent(latestHighRiskRate)}`,
       note: "当前样本",
-      definition: "当前样本 E-AA 最终风险方向指数的中位数，不代表事实概率或确定性判断。",
+      definition: "当前样本 EAA-ESI 最终风险方向指数的中位数，不代表事实概率或确定性判断。",
       tone: "blue",
       trend: finalTrend,
       delta: lastDelta(finalTrend),
       deltaFormat: "rate",
       chart: "area",
-    },
-    {
-      label: "尚未关联证据",
-      value: data.kpis.unlinkedEvidenceCount.toLocaleString(),
-      context: `占样本 ${formatPercent(data.kpis.sampleCount ? data.kpis.unlinkedEvidenceCount / data.kpis.sampleCount : null)}`,
-      note: "关联键缺失",
-      definition: "评分记录尚未找到相同规范化 companyId 与报告年度的证据记录，属于数据关联问题，不代表企业没有披露。",
-      tone: "amber",
-      trend: [],
-      delta: { delta: null, direction: null },
-      deltaFormat: "count",
-      chart: "bars",
-    },
-    {
-      label: "证据解析失败",
-      value: data.kpis.evidenceParseFailedCount.toLocaleString(),
-      context: `占样本 ${formatPercent(data.kpis.sampleCount ? data.kpis.evidenceParseFailedCount / data.kpis.sampleCount : null)}`,
-      note: "文档已关联",
-      definition: "已找到对应公司年度文档，但没有形成可用证据，通常来自 OCR、文本层或结构化抽取失败。",
-      tone: "coral",
-      trend: [],
-      delta: { delta: null, direction: null },
-      deltaFormat: "count",
-      chart: "bars",
-    },
-    {
-      label: "证据覆盖不足",
-      value: data.kpis.lowEvidenceCoverageCount.toLocaleString(),
-      context: `占样本 ${formatPercent(data.kpis.sampleCount ? data.kpis.lowEvidenceCoverageCount / data.kpis.sampleCount : null)}`,
-      note: "覆盖率低于 70%",
-      definition: "证据已经成功关联和解析，但可支持判断的证据比例低于当前 70% 审查阈值。",
-      tone: "amber",
-      trend: [],
-      delta: { delta: null, direction: null },
-      deltaFormat: "count",
-      chart: "bars",
     },
     {
       label: "质量提醒",
@@ -223,7 +187,7 @@ export function KpiRail({ data }: { data: DashboardCommandCenterData }) {
         <dl>
           <div><dt>指标定义</dt><dd>{selected.definition}</dd></div>
           <div><dt>当前口径</dt><dd>{data.scope.reportYear} 报告年度 · 当前筛选样本</dd></div>
-          <div><dt>数据版本</dt><dd>{data.scope.dataVersion} · metric-contract-v2</dd></div>
+          <div><dt>数据版本</dt><dd>{data.scope.dataVersion}</dd></div>
         </dl>
         <footer>风险指标仅用于发现待复核信号，最终判断由研究人员完成。</footer>
       </section> : null}

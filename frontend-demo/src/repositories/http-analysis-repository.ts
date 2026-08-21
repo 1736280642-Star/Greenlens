@@ -4,6 +4,7 @@ import {
   companyYearListSchema,
   companyYearRecordSchema,
   dashboardCommandCenterSchema,
+  dashboardConstellationNodeSchema,
   dashboardInsightsSchema,
   dataSourceStatusSchema,
   dataSourceSyncJobSchema,
@@ -28,7 +29,11 @@ export class HttpAnalysisRepository implements AnalysisRepository {
 
   private async json(path: string, init?: RequestInit) {
     const response = await this.request(`${this.baseUrl}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
-    if (!response.ok) throw new Error(`后端请求失败（${response.status}）。请检查接口状态后重试。`);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null) as { cause?: string; impact?: string; nextAction?: string } | null;
+      const message = [detail?.cause, detail?.impact, detail?.nextAction].filter(Boolean).join(" ");
+      throw new Error(message || `后端请求失败（${response.status}）。请检查接口状态后重试。`);
+    }
     return response.json();
   }
 
@@ -89,7 +94,15 @@ export class HttpAnalysisRepository implements AnalysisRepository {
     void scenario;
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
     if (query.light === true) params.set("light", "1");
-    return dashboardCommandCenterSchema.parse(await this.json(`/dashboard/command-center?${params}`));
+    const route = query.light === true ? "/dashboard/command-center/summary" : "/dashboard/command-center";
+    return dashboardCommandCenterSchema.parse(await this.json(`${route}?${params}`));
+  }
+
+  async getDashboardConstellation(scenario: DemoScenario = "success", query: CompanyYearQuery = {}) {
+    void scenario;
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null && value !== false).map(([key, value]) => [key, String(value)]));
+    params.set("constellation", "1");
+    return dashboardConstellationNodeSchema.array().parse(await this.json(`/dashboard/command-center/summary?${params}`));
   }
 
   async getDashboardInsights() { return dashboardInsightsSchema.parse(await this.json("/dashboard/insights")); }
@@ -99,12 +112,30 @@ export class HttpAnalysisRepository implements AnalysisRepository {
     return riskInterpretationSchema.parse(await this.json(`/company-years/${encodeURIComponent(companyId)}/interpretation?${params}`));
   }
 
-  async createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }) {
-    return analysisJobSchema.parse(await this.json("/analysis-jobs", { method: "POST", body: JSON.stringify(input) }));
+  async createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number; file?: File }) {
+    if (!input.file) throw new Error("未提供 PDF 正文。请重新选择文件后提交。");
+    const body = new FormData();
+    body.set("companyId", input.companyId);
+    body.set("reportYear", String(input.reportYear));
+    body.set("file", input.file, input.fileName);
+    const response = await this.request(`${this.baseUrl}/analysis-jobs`, { method: "POST", body });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null) as { cause?: string; nextAction?: string } | null;
+      throw new Error([detail?.cause, detail?.nextAction].filter(Boolean).join(" ") || `后端请求失败（${response.status}）。`);
+    }
+    return analysisJobSchema.parse(await response.json());
   }
 
   async getAnalysisJob(jobId: string) {
     return analysisJobSchema.parse(await this.json(`/analysis-jobs/${encodeURIComponent(jobId)}`));
+  }
+
+  async cancelAnalysisJob(jobId: string) {
+    return analysisJobSchema.parse(await this.json(`/analysis-jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" }));
+  }
+
+  async retryAnalysisJob(jobId: string) {
+    return analysisJobSchema.parse(await this.json(`/analysis-jobs/${encodeURIComponent(jobId)}`, { method: "POST" }));
   }
 
   async saveReview(review: ReviewRecord) {

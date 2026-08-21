@@ -1,0 +1,22 @@
+services:
+  greenlens:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: greenlens-web:latest
+    container_name: greenlens-web
+    ports:
+      - "3130:3130"
+    environment:
+      # Keep identical to the build-time values so the client bundle and the
+      # server runtime agree on which repository pipeline to use.
+      NEXT_PUBLIC_ANALYSIS_REPOSITORY: http
+      NEXT_PUBLIC_ANALYSIS_API_BASE_URL: /api/v1
+      GREENLENS_SQLITE_PATH: /app/.greenlens-runtime/greenlens.sqlite
+      GREENLENS_INGEST_ALLOWED_HOSTS: "127.0.0.1,localhost"
+    env_file:
+      - .env
+    volumes:
+      # Existing SQLite data (greenlens.sqlite + WAL) lives on the host here.
+      - ./.greenlens-runtime:/app/.greenlens-runtime
+    restart: unless-stopped

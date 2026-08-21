@@ -9,7 +9,6 @@ import {
   Command,
   Database,
   FileSearch,
-  GitCompareArrows,
   Leaf,
   Menu,
   PanelLeftClose,
@@ -27,7 +26,6 @@ import { GlobalLayers } from "@/components/global-layers";
 const nav = [
   { href: "/dashboard", label: "概览", caption: "Dashboard", icon: ChartNoAxesCombined },
   { href: "/companies", label: "企业", caption: "Companies", icon: Building2 },
-  { href: "/compare", label: "对比", caption: "Compare", icon: GitCompareArrows },
   { href: "/reports", label: "报告检测", caption: "Reports", icon: FileSearch },
   { href: "/review", label: "AI 解读", caption: "Interpretation", icon: Sparkles },
   { href: "/data-sources", label: "数据源", caption: "Sources", icon: Database },
@@ -37,7 +35,6 @@ const nav = [
 const pageTitles: Record<string, string> = {
   dashboard: "风险总览",
   companies: "企业库",
-  compare: "对比分析",
   reports: "报告检测",
   review: "AI 风险解读",
   "data-sources": "数据源",
@@ -72,6 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     () => false,
   );
   useEffect(() => {
+    if (analysisRepositoryMode === "mock") return;
     let active = true;
     Promise.all([
       fetch("/api/v1/industries", { cache: "no-store" }),
@@ -175,7 +173,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ? <div><h1>GreenLens</h1><span className="topbar-subtitle">风险分析终端 · 风险总览</span></div>
               : root === "review"
                 ? <div><h1>GreenLens</h1><span className="topbar-subtitle">AI 风险解读 · 证据驱动研究工作台</span></div>
-              : <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>}
+              : root === "companies"
+                ? <div className="company-topbar-context"><span>GreenLens</span><i aria-hidden="true">/</i><strong>企业</strong></div>
+                : <div><span className="topbar-context">GreenLens / {pageTitles[root] ?? "企业"}</span><h1>{title}</h1></div>}
           </div>
           <div className="topbar-actions">
             <button className="command-trigger" onClick={() => openDrawer("command")}><Search size={16} /><span>搜索公司、页面或动作</span><kbd>Ctrl K</kbd></button>
@@ -192,6 +192,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <label><span>行业</span><select disabled={!filtersInteractive} value={industry} onChange={(event) => setFilters({ industry: event.target.value })}><option>全部行业</option>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>风险</span><select disabled={!filtersInteractive} value={risk} onChange={(event) => setFilters({ risk: event.target.value })}><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option><option>暂不可评分</option></select></label>
           {(industry !== "全部行业" || risk !== "全部风险" || year !== 2024) && <button className="text-button" disabled={!filtersInteractive} onClick={() => setFilters({ year: 2024, industry: "全部行业", risk: "全部风险" })}>清除筛选</button>}
+          {root === "review" ? <div id="review-context-actions" className="review-context-actions" role="group" aria-label="AI 风险解读操作" /> : null}
           <span className="context-count">后端样本 · 口径截至 {year}</span>
         </div>}
 

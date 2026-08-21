@@ -25,7 +25,7 @@ function buildSteps(target: { baseEsgsi: number | null; actionPenalty: number | 
   const evidence = displayValue(target.evidenceAdjustment ?? 0);
   const final = displayValue(target.final ?? base + action + indeterminate + planning + evidence);
   let running = base;
-  const steps: WaterfallStep[] = [{ label: "基础 ESGSI", delta: base, kind: "base", running: base }];
+  const steps: WaterfallStep[] = [{ label: "基础 ESI", delta: base, kind: "base", running: base }];
   for (const [label, delta, kind] of [
     ["行动实质罚项", action, "penalty"],
     ["模糊声明罚项", indeterminate, "penalty"],
@@ -242,8 +242,8 @@ export function RiskBreakdownWaterfall({
   const ref = useEChart(option);
   return (
     <section className={`cc-panel cc-waterfall-panel ${useCompany ? "is-selected" : ""} ${expanded ? "cc-panel-expanded" : ""}`}>
-      <CommandPanelHeading eyebrow="WHY THIS RISK?" title="E-AA-ESGSI 构成" action={<span className={`cc-company-chip ${useCompany ? "selected" : ""}`}>{useCompany ? `COMPANY · ${selectedCompany!.companyName}` : "COHORT · 样本中位"}</span>} onExpand={expanded ? undefined : onExpand} expandLabel="展开 E-AA-ESGSI 构成" />
-      <div className="cc-bottom-chart cc-waterfall-chart" ref={ref} role="img" aria-label={`${objectLabel} 的 E-AA-ESGSI 瀑布图`} />
+      <CommandPanelHeading eyebrow="WHY THIS RISK?" title="EAA-ESI 构成" action={<span className={`cc-company-chip ${useCompany ? "selected" : ""}`}>{useCompany ? `COMPANY · ${selectedCompany!.companyName}` : "COHORT · 样本中位"}</span>} onExpand={expanded ? undefined : onExpand} expandLabel="展开 EAA-ESI 构成" />
+      <div className="cc-bottom-chart cc-waterfall-chart" ref={ref} role="img" aria-label={`${objectLabel} 的 EAA-ESI 瀑布图`} />
     </section>
   );
 }

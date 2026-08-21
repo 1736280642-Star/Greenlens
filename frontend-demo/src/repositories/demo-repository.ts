@@ -5,6 +5,7 @@ import {
   companyMetricHistoryPointSchema,
   companyYearListSchema,
   dashboardCommandCenterSchema,
+  dashboardConstellationNodeSchema,
   dashboardInsightsSchema,
   dataSourceStatusSchema,
   dataSourceSyncJobSchema,
@@ -177,6 +178,13 @@ export const demoRepository: AnalysisRepository = {
     );
     return structuredClone(dashboardCommandCenterSchema.parse(payload));
   },
+  async getDashboardConstellation(scenario: DemoScenario = "success", query: CompanyYearQuery = {}) {
+    const dashboard = await this.getDashboardCommandCenter(scenario, { ...query, light: false });
+    return dashboardConstellationNodeSchema.array().parse(dashboard.riskNodes.map((node) => ({
+      companyId: node.companyId, companyName: node.companyName, stockCode: node.stockCode, industry: node.industry,
+      reportYear: node.reportYear, esgsi: node.metricRiskValues.ESGSI, eass: node.eass, finalIndex: node.finalIndex, riskBand: node.riskBand,
+    })));
+  },
   async getDashboardInsights(scenario: DemoScenario = "success") {
     await wait(scenario);
     return structuredClone(scenario === "empty" ? { reviewTasks: [], reviewTrend: [], modelAgreement: [], sourceFreshness: [], evidenceCoverage: [] } : validatedDashboardInsights);
@@ -204,6 +212,19 @@ export const demoRepository: AnalysisRepository = {
     const job = advanceJob(stored);
     stored.job = job;
     return structuredClone(analysisJobSchema.parse(job));
+  },
+  async cancelAnalysisJob(jobId) {
+    const stored = jobs.get(jobId);
+    if (!stored) throw new Error("未找到检测任务。请重新提交报告。");
+    stored.job = { ...stored.job, status: "cancelled", stage: "cancelled", error: undefined };
+    return structuredClone(analysisJobSchema.parse(stored.job));
+  },
+  async retryAnalysisJob(jobId) {
+    const stored = jobs.get(jobId);
+    if (!stored) throw new Error("未找到检测任务。请重新提交报告。");
+    stored.createdAt = Date.now();
+    stored.job = { ...stored.job, status: "queued", phase: "collect", stage: "uploaded", progress: 0, error: undefined };
+    return structuredClone(analysisJobSchema.parse(stored.job));
   },
   async saveReview(review: ReviewRecord) { return structuredClone(reviewRecordSchema.parse(review)); },
   async listReviewQueueActions() {

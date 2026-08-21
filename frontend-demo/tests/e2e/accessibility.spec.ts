@@ -11,7 +11,7 @@ for (const route of ["/dashboard", "/companies/cy-materials?tab=evidence", "/rep
   });
 }
 
-for (const route of ["/dashboard", "/companies", "/companies/cy-materials", "/compare", "/reports", "/review", "/methodology"]) {
+for (const route of ["/dashboard", "/companies", "/companies/cy-materials", "/companies?view=compare&companies=cy-materials,linhai-energy", "/reports", "/review", "/methodology"]) {
   const minimumFontSize = 12;
   test(`visible interface copy meets the ${minimumFontSize}px readability floor: ${route}`, async ({ page }) => {
     if (route === "/dashboard") test.slow();

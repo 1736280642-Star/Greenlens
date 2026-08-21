@@ -5,6 +5,7 @@ import type {
   CompanyMetricHistoryPoint,
   CompanyYearRecord,
   DashboardCommandCenterData,
+  DashboardConstellationNode,
   DashboardInsights,
   EsgRatingRecord,
   EnvironmentalAspectScore,
@@ -47,10 +48,13 @@ export interface AnalysisRepository {
   listEsgRatings(companyId: string, options?: { fromYear?: number; toYear?: number; vendor?: string }): Promise<EsgRatingRecord[]>;
   listPanelYearSummaries(options?: { fromYear?: number; toYear?: number }): Promise<PanelYearSummary[]>;
   getDashboardCommandCenter(scenario?: DemoScenario, query?: CompanyYearQuery): Promise<DashboardCommandCenterData>;
+  getDashboardConstellation(scenario?: DemoScenario, query?: CompanyYearQuery): Promise<DashboardConstellationNode[]>;
   getDashboardInsights(scenario?: DemoScenario): Promise<DashboardInsights>;
   getRiskInterpretation(companyId: string, reportYear: number, focus?: RiskInterpretationFocus): Promise<RiskInterpretation>;
-  createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number }): Promise<AnalysisJob>;
+  createAnalysisJob(input: { companyId: string; reportYear: number; fileName: string; fileSize: number; file?: File }): Promise<AnalysisJob>;
   getAnalysisJob(jobId: string): Promise<AnalysisJob>;
+  cancelAnalysisJob(jobId: string): Promise<AnalysisJob>;
+  retryAnalysisJob(jobId: string): Promise<AnalysisJob>;
   saveReview(review: ReviewRecord): Promise<ReviewRecord>;
   listReviewQueueActions(): Promise<ReviewQueueAction[]>;
   saveReviewQueueAction(action: ReviewQueueAction): Promise<ReviewQueueAction>;

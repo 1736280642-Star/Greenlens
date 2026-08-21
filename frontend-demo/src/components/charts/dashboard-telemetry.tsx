@@ -10,7 +10,7 @@ const riskBands = [
   { key: "unavailable", label: "暂不可评分", color: "#7F8C86" },
 ] as const;
 const metricSet: Array<{ code: MetricCode; label: string }> = [
-  { code: "EASS", label: "EASS 缺口" }, { code: "IR", label: "IR" }, { code: "UPR", label: "UPR" }, { code: "ESGSI", label: "ESGSI" }, { code: "IMBALANCE", label: "失衡" },
+  { code: "EASS", label: "EASS 缺口" }, { code: "IR", label: "IR" }, { code: "UPR", label: "UPR" }, { code: "ESGSI", label: "ESI" }, { code: "IMBALANCE", label: "失衡" },
 ];
 
 export function DashboardTelemetry({ companies }: { companies: CompanyYearRecord[] }) {

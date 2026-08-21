@@ -42,11 +42,11 @@ export function SubstanceSeverityMatrix({ companies }: { companies: CompanyYearR
         formatter: (params: { data: { name: string; value: number[]; companyId: string } }) => {
           const company = companies.find((item) => item.companyId === params.data.companyId);
           const upr = company ? metricPercent(company, "UPR") : null;
-          return `<b>${params.data.name}</b><br/>EASS：${params.data.value[0]}%<br/>E-AA-ESGSI：${params.data.value[1]}%<br/>UPR：${upr == null ? "--" : `${upr}%`}<br/>环境声明：${company?.environmentalActions.totalStatements ?? 0} 条`;
+          return `<b>${params.data.name}</b><br/>EASS：${params.data.value[0]}%<br/>EAA-ESI：${params.data.value[1]}%<br/>UPR：${upr == null ? "--" : `${upr}%`}<br/>环境声明：${company?.environmentalActions.totalStatements ?? 0} 条`;
         },
       },
       xAxis: { type: "value", min: 0, max: 100, name: "EASS 行动实质性 →", nameLocation: "middle", nameGap: 40, nameTextStyle: { fontSize: 16 }, axisLabel: { color: "#89958F", fontSize: 16, formatter: "{value}%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
-      yAxis: { type: "value", min: 0, max: 100, name: "E-AA-ESGSI ↑", nameGap: 42, nameTextStyle: { fontSize: 16 }, axisLabel: { color: "#89958F", fontSize: 16, formatter: "{value}%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
+      yAxis: { type: "value", min: 0, max: 100, name: "EAA-ESI ↑", nameGap: 42, nameTextStyle: { fontSize: 16 }, axisLabel: { color: "#89958F", fontSize: 16, formatter: "{value}%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,.05)" } } },
       series: [{
         type: "scatter", data, symbolSize: (value: number[]) => value[2], emphasis: { scale: false },
         markArea: { silent: true, itemStyle: { color: "rgba(255,92,108,.045)", borderColor: "rgba(255,92,108,.38)", borderWidth: 1 }, label: { show: true, color: "#FF9F43", fontSize: 16 }, data: [[{ name: "低实质 · 高风险", xAxis: 0, yAxis: 66 }, { xAxis: 50, yAxis: 100 }]] },
@@ -67,7 +67,7 @@ export function SubstanceSeverityMatrix({ companies }: { companies: CompanyYearR
   }
 
   return <div className="chart-wrap substance-matrix">
-    <div ref={element} className="chart-canvas" role="img" tabIndex={0} aria-label="EASS 与 E-AA-ESGSI 象限图。按方向键切换公司。" onKeyDown={(event) => {
+    <div ref={element} className="chart-canvas" role="img" tabIndex={0} aria-label="EASS 与 EAA-ESI 象限图。按方向键切换公司。" onKeyDown={(event) => {
       if (["ArrowRight", "ArrowUp"].includes(event.key)) moveSelection(1);
       if (["ArrowLeft", "ArrowDown"].includes(event.key)) moveSelection(-1);
       if (event.key === "Escape") selectCompany(null);
@@ -75,7 +75,7 @@ export function SubstanceSeverityMatrix({ companies }: { companies: CompanyYearR
     }} />
     {selected && <button className="selected-summary" onClick={() => router.push(`/companies/${selected.companyId}?year=${selected.reportYear}`)}><strong>{selected.companyName}</strong><span>最终指数 {formatPercent(selected.finalIndex)} · EASS {formatMetricPercent(selected, "EASS")}</span></button>}
     <button className="text-button chart-table-toggle" onClick={() => setShowTable(!showTable)}>{showTable ? "隐藏数据表" : "查看数据表"}</button>
-    {showTable && <div className="chart-data-table"><table><thead><tr><th>公司</th><th>EASS</th><th>E-AA-ESGSI</th><th>UPR</th></tr></thead><tbody>{companies.map((company) => <tr key={company.companyId}><td>{company.companyName}</td><td>{formatMetricPercent(company, "EASS")}</td><td>{formatPercent(company.finalIndex)}</td><td>{formatMetricPercent(company, "UPR")}</td></tr>)}</tbody></table></div>}
+    {showTable && <div className="chart-data-table"><table><thead><tr><th>公司</th><th>EASS</th><th>EAA-ESI</th><th>UPR</th></tr></thead><tbody>{companies.map((company) => <tr key={company.companyId}><td>{company.companyName}</td><td>{formatMetricPercent(company, "EASS")}</td><td>{formatPercent(company.finalIndex)}</td><td>{formatMetricPercent(company, "UPR")}</td></tr>)}</tbody></table></div>}
   </div>;
 }
 

@@ -7,7 +7,7 @@ const taskSeeds: Array<[string, string, DashboardReviewTask["reviewType"], Metri
   ["rv-1039", "jiuhe-build", "action_classification", "EASS", "行动三分类置信度偏低，需确认计划与已实施边界", 86, 118, 76, "disputed", .51, .50],
   ["rv-1035", "demo-company-08", "risk_band", "ESGSI", "积极环境语言与实质信息之间差距偏高", 83, 63, 81, "pending", .58, .50],
   ["rv-1028", "demo-company-13", "IR", "IR", "模糊环境声明比例超过关注阈值", 79, 92, 84, "insufficient", .46, .33],
-  ["rv-1021", "demo-company-19", "risk_band", "EAA_ESGSI", "行动和计划惩罚推高最终调整指数", 72, 37, 74, "pending", .71, .66],
+  ["rv-1021", "demo-company-19", "risk_band", "EAA_ESI", "行动和计划惩罚推高最终调整指数", 72, 37, 74, "pending", .71, .66],
   ["rv-1016", "qiming-mobility", "UPR", "UPR", "阶段目标已披露，但验证属性仍不完整", 68, 29, 61, "verified", .54, .60],
   ["rv-1009", "beichen-foods", "IR", "IR", "包装减量表述缺少绝对量与同比口径", 64, 146, 91, "insufficient", .39, .33],
 ];

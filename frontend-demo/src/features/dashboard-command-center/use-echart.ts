@@ -1,17 +1,23 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { EChartsOption } from "echarts";
+import type { ECharts, EChartsOption } from "echarts";
 
 type ChartEvents = Record<string, (params: unknown) => void>;
 
 export function useEChart(option: EChartsOption, events: ChartEvents = {}) {
   const elementRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef(events);
+  const optionRef = useRef(option);
+  const chartRef = useRef<ECharts | null>(null);
 
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useEffect(() => {
+    optionRef.current = option;
+  }, [option]);
 
   useEffect(() => {
     const element = elementRef.current;
@@ -22,12 +28,18 @@ export function useEChart(option: EChartsOption, events: ChartEvents = {}) {
 
     void import("echarts").then((echarts) => {
       if (disposed) return;
-      let chart: ReturnType<typeof echarts.init> | null = null;
+      let chart: ECharts | null = null;
+      const eventProxies = new Map<string, (params: unknown) => void>();
       const mountChart = () => {
         if (chart || element.clientWidth === 0 || element.clientHeight === 0) return;
         chart = echarts.getInstanceByDom(element) ?? echarts.init(element, undefined, { renderer: "canvas" });
-        chart.setOption(option, { notMerge: true, lazyUpdate: true });
-        for (const [eventName, handler] of Object.entries(eventsRef.current)) chart.on(eventName, handler);
+        chartRef.current = chart;
+        chart.setOption(optionRef.current, { notMerge: true, lazyUpdate: true });
+        for (const eventName of Object.keys(eventsRef.current)) {
+          const proxy = (params: unknown) => eventsRef.current[eventName]?.(params);
+          eventProxies.set(eventName, proxy);
+          chart.on(eventName, proxy);
+        }
       };
       const observer = new ResizeObserver(() => {
         mountChart();
@@ -38,7 +50,8 @@ export function useEChart(option: EChartsOption, events: ChartEvents = {}) {
       cleanup = () => {
         observer.disconnect();
         if (!chart) return;
-        for (const [eventName, handler] of Object.entries(eventsRef.current)) chart.off(eventName, handler);
+        chartRef.current = null;
+        for (const [eventName, proxy] of eventProxies) chart.off(eventName, proxy);
         chart.dispose();
       };
     });
@@ -47,6 +60,10 @@ export function useEChart(option: EChartsOption, events: ChartEvents = {}) {
       disposed = true;
       cleanup();
     };
+  }, []);
+
+  useEffect(() => {
+    chartRef.current?.setOption(option, { notMerge: true, lazyUpdate: true });
   }, [option]);
 
   return elementRef;

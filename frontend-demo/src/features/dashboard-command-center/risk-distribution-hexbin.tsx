@@ -6,7 +6,14 @@ import type { CustomSeriesOption, EChartsOption } from "echarts";
 import { CommandPanelHeading } from "./panel-heading";
 import { RISK_COLORS, riskBandColor, riskFill } from "./risk-palette";
 import { useEChart } from "./use-echart";
-import type { DashboardRiskNode, DashboardTriadCode, RiskBand } from "@/types";
+import type { DashboardConstellationNode, DashboardRiskNode, DashboardTriadCode, RiskBand } from "@/types";
+
+type RiskPlotNode = DashboardRiskNode | DashboardConstellationNode;
+type DatasetMode = "representative" | "full";
+
+function nodeEsgsi(node: RiskPlotNode) {
+  return "esgsi" in node ? node.esgsi : node.metricRiskValues.ESGSI;
+}
 
 type ViewMode = "hexbin" | "density" | "scatter";
 
@@ -16,7 +23,7 @@ type HexBin = {
   count: number;
   medianRisk: number;
   riskBand: RiskBand;
-  members: DashboardRiskNode[];
+  members: RiskPlotNode[];
 };
 
 function riskBandFromValue(value: number): RiskBand {
@@ -44,14 +51,14 @@ function hexPath(radius: number) {
   return `${path}Z`;
 }
 
-function buildHexBins(nodes: DashboardRiskNode[], cols: number, rows: number): HexBin[] {
+function buildHexBins(nodes: RiskPlotNode[], cols: number, rows: number): HexBin[] {
   const dx = 1 / cols;
   const dy = 1 / rows;
-  const grid = new Map<string, { cx: number; cy: number; members: DashboardRiskNode[] }>();
+  const grid = new Map<string, { cx: number; cy: number; members: RiskPlotNode[] }>();
 
   for (const node of nodes) {
-    const x = node.metricRiskValues.ESGSI;
-    const y = node.metricRiskValues.EASS;
+    const x = nodeEsgsi(node);
+    const y = node.eass;
     if (x == null || y == null) continue;
     const col = Math.min(cols - 1, Math.max(0, Math.floor(x / dx)));
     const rowOffset = col % 2 === 1 ? .5 : 0;
@@ -81,17 +88,25 @@ export function RiskDistributionHexbin({
   onOpen,
   expanded = false,
   onExpand,
+  datasetMode = "representative",
+  onDatasetModeChange,
+  datasetLoading = false,
+  totalSampleCount,
 }: {
-  nodes: DashboardRiskNode[];
+  nodes: RiskPlotNode[];
   selectedFactor: DashboardTriadCode | null;
   selectedCompanyId: string | null;
   onSelect: (companyId: string, addToCompare: boolean) => void;
   onOpen: (companyId: string) => void;
   expanded?: boolean;
   onExpand?: () => void;
+  datasetMode?: DatasetMode;
+  onDatasetModeChange?: (mode: DatasetMode) => void;
+  datasetLoading?: boolean;
+  totalSampleCount?: number;
 }) {
   const [mode, setMode] = useState<ViewMode>("hexbin");
-  const plottable = useMemo(() => nodes.filter((node) => node.metricRiskValues.ESGSI != null && node.metricRiskValues.EASS != null), [nodes]);
+  const plottable = useMemo(() => nodes.filter((node) => nodeEsgsi(node) != null && node.eass != null), [nodes]);
   const excludedCount = nodes.length - plottable.length;
   const cols = expanded ? 24 : 16;
   const rows = expanded ? 14 : 10;
@@ -167,14 +182,14 @@ export function RiskDistributionHexbin({
           ],
         };
       },
-      data: bins.map((bin) => ({ value: [bin.cx, bin.cy], source: bin, sourceKind: "bin" })),
+      data: bins.map((bin, binIndex) => ({ value: [bin.cx, bin.cy], binIndex, sourceKind: "bin" })),
     };
 
     const scatterSeries = {
       name: "公司样本",
       type: "scatter" as const,
       data: plottable.map((node) => ({
-        value: [node.metricRiskValues.ESGSI ?? 0, node.metricRiskValues.EASS ?? 0],
+        value: [nodeEsgsi(node) ?? 0, node.eass ?? 0],
         source: node,
         sourceKind: "node",
         symbolSize: node.companyId === selectedCompanyId ? 12 : 5,
@@ -190,25 +205,25 @@ export function RiskDistributionHexbin({
     };
 
     return {
-      animationDuration: 360,
+      animationDuration: plottable.length > 500 ? 0 : 360,
       grid: commonGrid,
       tooltip: {
         backgroundColor: "rgba(5,23,27,.97)",
         borderColor: "rgba(39,215,229,.3)",
         textStyle: { color: "#EAF5F3", fontSize: 12 },
         formatter: (params: unknown) => {
-          const payload = (params as { data?: { sourceKind?: string; source?: HexBin | DashboardRiskNode } }).data;
+          const payload = (params as { data?: { sourceKind?: string; source?: RiskPlotNode; binIndex?: number } }).data;
           if (payload?.sourceKind === "node") {
-            const node = payload.source as DashboardRiskNode;
-            return `<strong>${node.companyName}</strong><br/>ESGSI ${Math.round((node.metricRiskValues.ESGSI ?? 0) * 100)}% · EASS ${Math.round((node.metricRiskValues.EASS ?? 0) * 100)}%<br/>E-AA ${Math.round((node.finalIndex ?? 0) * 100)}%`;
+            const node = payload.source as RiskPlotNode;
+            return `<strong>${node.companyName}</strong><br/>ESI ${Math.round((nodeEsgsi(node) ?? 0) * 100)}% · EASS ${Math.round((node.eass ?? 0) * 100)}%<br/>EAA-ESI ${Math.round((node.finalIndex ?? 0) * 100)}%`;
           }
-          const bin = payload?.source as HexBin | undefined;
+          const bin = payload?.binIndex == null ? undefined : bins[payload.binIndex];
           if (!bin) return "";
           return `<strong>${bin.count} 个样本</strong><br/>风险中位数 ${Math.round(bin.medianRisk * 100)}%<br/>颜色 = 风险等级 · 亮度 = 样本密度`;
         },
       },
       xAxis: {
-        type: "value", min: 0, max: 1, name: "ESGSI / 修辞—内容差异", nameLocation: "middle", nameGap: expanded ? 34 : 26,
+        type: "value", min: 0, max: 1, name: "ESI / 修辞—内容差异", nameLocation: "middle", nameGap: expanded ? 34 : 26,
         nameTextStyle: { color: "#85A9A7", fontSize: expanded ? 12 : 11 },
         axisLine: { lineStyle: { color: "rgba(91,178,180,.34)" } },
         splitLine: { lineStyle: { color: "rgba(56,130,131,.09)" } },
@@ -234,34 +249,38 @@ export function RiskDistributionHexbin({
 
   const ref = useEChart(option, {
     click: (params) => {
-      const payload = (params as { data?: { sourceKind?: string; source?: HexBin | DashboardRiskNode } }).data;
-      if (payload?.sourceKind === "node") return onSelect((payload.source as DashboardRiskNode).companyId, false);
-      const bin = payload?.source as HexBin | undefined;
+      const payload = (params as { data?: { sourceKind?: string; source?: RiskPlotNode; binIndex?: number } }).data;
+      if (payload?.sourceKind === "node") return onSelect((payload.source as RiskPlotNode).companyId, false);
+      const bin = payload?.binIndex == null ? undefined : bins[payload.binIndex];
       const target = bin?.members.toSorted((a, b) => (b.finalIndex ?? 0) - (a.finalIndex ?? 0))[0];
       if (target) onSelect(target.companyId, false);
     },
     dblclick: (params) => {
-      const payload = (params as { data?: { sourceKind?: string; source?: HexBin | DashboardRiskNode } }).data;
-      if (payload?.sourceKind === "node") return onOpen((payload.source as DashboardRiskNode).companyId);
-      const bin = payload?.source as HexBin | undefined;
+      const payload = (params as { data?: { sourceKind?: string; source?: RiskPlotNode; binIndex?: number } }).data;
+      if (payload?.sourceKind === "node") return onOpen((payload.source as RiskPlotNode).companyId);
+      const bin = payload?.binIndex == null ? undefined : bins[payload.binIndex];
       const target = bin?.members.toSorted((a, b) => (b.finalIndex ?? 0) - (a.finalIndex ?? 0))[0];
       if (target) onOpen(target.companyId);
     },
   });
 
-  const factorHint = selectedFactor ? `聚焦：${selectedFactor === "RHETORIC_CONTENT" ? "ESGSI" : selectedFactor === "ACTION_SUBSTANCE" ? "EASS" : "IR / UPR"}` : undefined;
+  const factorHint = selectedFactor ? `聚焦：${selectedFactor === "RHETORIC_CONTENT" ? "ESI" : selectedFactor === "ACTION_SUBSTANCE" ? "EASS" : "IR / UPR"}` : undefined;
 
   return <section className={`cc-panel cc-hexbin-panel is-primary ${selectedCompanyId ? "has-company-selection" : ""} ${expanded ? "cc-panel-expanded" : ""}`}>
     <CommandPanelHeading
       eyebrow="RISK FIELD · HEXBIN"
       title="风险分布概览"
-      detail={factorHint ?? (excludedCount ? `${excludedCount} 项 ESGSI 缺失已排除` : undefined)}
+      detail={datasetLoading ? "正在加载全量 SQLite 投影…" : factorHint ?? `${datasetMode === "full" ? `全量 ${nodes.length}` : `代表 ${nodes.length}`} / ${totalSampleCount ?? nodes.length} 个样本${excludedCount ? ` · ${excludedCount} 项 ESI 缺失` : ""}`}
       action={<div className="cc-hexbin-mode" role="group" aria-label="风险分布视图模式">
+        {onDatasetModeChange ? <span className="cc-constellation-scope" role="group" aria-label="风险星图样本范围">
+          <button type="button" className={datasetMode === "representative" ? "active" : ""} aria-pressed={datasetMode === "representative"} onClick={() => onDatasetModeChange("representative")}>代表视图</button>
+          <button type="button" className={datasetMode === "full" ? "active" : ""} aria-pressed={datasetMode === "full"} disabled={datasetLoading} onClick={() => onDatasetModeChange("full")}>{datasetLoading ? "加载中" : "全量视图"}</button>
+        </span> : null}
         {(Object.keys(MODE_LABELS) as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? "active" : ""} aria-pressed={mode === item} onClick={() => setMode(item)}>{MODE_LABELS[item]}</button>)}
         {onExpand && !expanded ? <button className="cc-expand-button" onClick={onExpand} aria-label="展开风险分布概览" title="展开风险分布概览"><Maximize2 /></button> : null}
       </div>}
     />
-    <div className="cc-risk-stage cc-hexbin-stage" ref={ref} role="img" aria-label="ESGSI 与 EASS 行动缺口风险分布六边形分箱图；颜色表示风险等级，亮度表示样本密度" />
+    <div className="cc-risk-stage cc-hexbin-stage" ref={ref} role="img" aria-label="ESI 与 EASS 行动缺口风险分布六边形分箱图；颜色表示风险等级，亮度表示样本密度" />
     <div className="cc-hexbin-legend" aria-label="风险分布图例">
       <span><i className="low" />低风险</span><span><i className="medium" />中风险</span><span><i className="high" />高风险</span>
       <small>颜色 = 风险等级 · 亮度 = 样本密度</small>

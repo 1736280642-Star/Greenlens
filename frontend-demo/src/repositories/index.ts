@@ -14,8 +14,8 @@ export const analysisRepository: AnalysisRepository = repositoryMode === "http"
       get(target, property) {
         const remote = new Set([
           "listCompanies", "getCompany", "listEvidence", "listEnvironmentalAspects", "getCompanyHistory",
-          "getFinancialYear", "listViolationEvents", "listEsgRatings", "listPanelYearSummaries", "getDashboardCommandCenter",
-          "getDashboardInsights", "getRiskInterpretation", "createAnalysisJob", "getAnalysisJob", "saveReview", "listReviewQueueActions", "saveReviewQueueAction", "getEvidencePageText",
+          "getFinancialYear", "listViolationEvents", "listEsgRatings", "listPanelYearSummaries", "getDashboardCommandCenter", "getDashboardConstellation",
+          "getDashboardInsights", "getRiskInterpretation", "createAnalysisJob", "getAnalysisJob", "cancelAnalysisJob", "retryAnalysisJob", "saveReview", "listReviewQueueActions", "saveReviewQueueAction", "getEvidencePageText",
           "getBaiduNetdiskStatus", "listBaiduNetdiskFiles", "getBaiduNetdiskFieldCatalog", "createBaiduNetdiskSync", "getBaiduNetdiskSyncJob",
         ]);
         const source = remote.has(String(property)) ? new HttpAnalysisRepository(apiBaseUrl) : target;

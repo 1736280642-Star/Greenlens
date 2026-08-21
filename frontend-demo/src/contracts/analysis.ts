@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const metricCodeSchema = z.enum(["EASS", "IR", "UPR", "ESGSI", "EAA_ESGSI", "IMBALANCE"]);
+const metricCodeSchema = z.enum(["EASS", "IR", "UPR", "ESGSI", "EAA_ESI", "IMBALANCE"]);
 const riskBandSchema = z.enum(["high", "medium", "low", "unavailable"]);
 const evidenceStatusSchema = z.enum(["verified", "pending", "insufficient", "disputed"]);
 const reviewStatusSchema = z.enum(["pending", "partial", "reviewed", "disputed"]);
@@ -188,7 +188,7 @@ export const companyYearRecordSchema = z.object({
   if (record.riskClassification.assignedBand !== record.riskBand) {
     context.addIssue({ code: "custom", path: ["riskBand"], message: "风险等级必须与已版本化的分类结果一致" });
   }
-  const finalMetric = record.metrics.find((metric) => metric.code === "EAA_ESGSI");
+  const finalMetric = record.metrics.find((metric) => metric.code === "EAA_ESI");
   if (record.finalIndex != null) {
     const rawValues = [record.finalIndexRaw, finalMetric?.rawValue, record.indexBreakdown.finalRaw];
     const normalizedValues = [finalMetric?.normalizedValue, record.indexBreakdown.finalNormalized];
@@ -207,12 +207,12 @@ export const companyYearRecordSchema = z.object({
 export const companyYearListSchema = z.array(companyYearRecordSchema);
 
 export const environmentalAspectScoreSchema = z.object({
-  id: z.string(), companyId: z.string(), reportYear: z.number().int(), aspectText: z.string(),
+  id: z.string(), documentId: z.string().optional(), companyId: z.string(), reportYear: z.number().int(), aspectText: z.string(),
   category: z.enum(["emissions_climate", "energy_resources", "waste_circularity", "pollution_control", "biodiversity_ecology"]),
   frequency: z.number().int().nonnegative(), salience: z.number().min(0).max(1),
   implemented: z.number().int().nonnegative(), planning: z.number().int().nonnegative(), indeterminate: z.number().int().nonnegative(),
   planningAlpha: z.number().min(0).max(1), actionScore: z.number().min(0).max(1).nullable(), evidenceIds: z.array(z.string()),
-  calculationStatus: calculationStatusSchema, formulaVersion: z.string().min(1),
+  calculationStatus: calculationStatusSchema, formulaVersion: z.string().min(1), extractorVersion: z.string().optional(),
 });
 
 const metricHistoryValueSchema = z.object({
@@ -245,10 +245,11 @@ export const violationEventSchema = z.object({
 });
 
 export const evidenceItemSchema = z.object({
-  id: z.string(), companyId: z.string(), reportYear: z.number().int(),
+  id: z.string(), documentId: z.string().optional(), companyId: z.string(), stockCode: z.string().optional(), reportYear: z.number().int(),
   type: z.enum(["claim", "action", "metric", "verification", "external"]),
   actionClass: z.enum(["implemented", "planning", "indeterminate"]).optional(), metricCode: metricCodeSchema.optional(),
-  aspectId: z.string().optional(), title: z.string(), excerpt: z.string(), page: z.number().int().positive().optional(), eventDate: z.string().optional(),
+  aspectId: z.string().optional(), title: z.string(), excerpt: z.string(), page: z.number().int().positive().optional(), textHash: z.string().optional(),
+  environmentalCategory: z.enum(["emissions_climate", "energy_resources", "waste_circularity", "pollution_control", "biodiversity_ecology"]).optional(), extractorVersion: z.string().optional(), eventDate: z.string().optional(),
   sourceLabel: z.string(), sourceUrl: z.string().optional(), status: evidenceStatusSchema,
 });
 
@@ -294,6 +295,25 @@ const dashboardCohortBreakdownSchema = z.object({
   final: z.number().min(0).max(1).nullable(),
 });
 
+const dashboardGsiNodeSchema = z.object({
+  gsiFinal: z.number().min(0).max(1),
+  gwScore: z.number().min(0).max(1),
+  coveragePenalty: z.number().min(0).max(1),
+  imbalance: z.number().min(0).max(1),
+  eFocus: z.number().min(0),
+  sFocus: z.number().min(0),
+  gFocus: z.number().min(0),
+  duplicateCount: z.number().int().positive(),
+  qualityFlags: z.array(z.string()),
+});
+
+export const gsiScoreRecordSchema = dashboardGsiNodeSchema.extend({
+  id: z.string(), companyId: z.string(), stockCode: z.string(), companyName: z.string(), reportYear: z.number().int(),
+  totalWords: z.number().int().nonnegative(), eCount: z.number().int().nonnegative(), sCount: z.number().int().nonnegative(), gCount: z.number().int().nonnegative(),
+  calculationStatus: z.literal("calculated"), modelVersion: z.string().min(1), dataVersion: z.string().min(1),
+  sourceFile: z.string().min(1), sourceRow: z.number().int().positive(), importedAt: z.string().datetime({ offset: true }),
+});
+
 const dashboardRiskNodeSchema = z.object({
   companyId: z.string(), companyName: z.string(), stockCode: z.string(), industry: z.string(), reportYear: z.number().int(),
   eass: z.number().min(0).max(1).nullable(), finalIndex: z.number().min(0).max(1).nullable(), riskBand: riskBandSchema,
@@ -302,11 +322,18 @@ const dashboardRiskNodeSchema = z.object({
   metricRiskValues: z.object({
     ESGSI: z.number().min(0).max(1).nullable(), EASS: z.number().min(0).max(1).nullable(),
     IR: z.number().min(0).max(1).nullable(), UPR: z.number().min(0).max(1).nullable(),
-    EAA_ESGSI: z.number().min(0).max(1).nullable(),
+    EAA_ESI: z.number().min(0).max(1).nullable(),
   }),
+  gsi: dashboardGsiNodeSchema.nullable(),
   persistentHighRiskYears: z.number().int().nonnegative(),
   indexBreakdown: indexBreakdownSchema,
   history: z.array(dashboardRiskHistoryPointSchema).optional(),
+});
+
+export const dashboardConstellationNodeSchema = z.object({
+  companyId: z.string(), companyName: z.string(), stockCode: z.string(), industry: z.string(), reportYear: z.number().int(),
+  esgsi: z.number().min(0).max(1).nullable(), eass: z.number().min(0).max(1).nullable(),
+  finalIndex: z.number().min(0).max(1).nullable(), riskBand: riskBandSchema,
 });
 
 export const dashboardCommandCenterSchema = z.object({
@@ -330,14 +357,32 @@ export const dashboardCommandCenterSchema = z.object({
     q3: z.number().min(0).max(1).nullable(),
     history: z.array(z.object({ year: z.number().int(), value: z.number().min(0).max(1).nullable() })),
   })),
+  gsiRobustness: z.object({
+    available: z.boolean(), matchedCompanyCount: z.number().int().nonnegative(), duplicateGroupCount: z.number().int().nonnegative(),
+    dataVersion: z.string().nullable(),
+    metrics: z.array(z.object({
+      code: z.enum(["GSI", "COVERAGE_PENALTY", "IMBALANCE"]), label: z.string(), description: z.string(),
+      medianValue: z.number().min(0).max(1).nullable(), meanValue: z.number().min(0).max(1).nullable(),
+      sampleCount: z.number().int().nonnegative(), q1: z.number().min(0).max(1).nullable(), q3: z.number().min(0).max(1).nullable(),
+      history: z.array(z.object({
+        year: z.number().int(), medianValue: z.number().min(0).max(1).nullable(), meanValue: z.number().min(0).max(1).nullable(),
+        q1: z.number().min(0).max(1).nullable(), q3: z.number().min(0).max(1).nullable(), sampleCount: z.number().int().nonnegative(),
+      })),
+    })),
+  }),
+  redFlagTrend: z.array(z.object({
+    year: z.number().int(), highEsgsiRate: z.number().min(0).max(1).nullable(), lowEassRate: z.number().min(0).max(1).nullable(),
+    ambiguityVerificationRate: z.number().min(0).max(1).nullable(), sampleCount: z.number().int().nonnegative(),
+  })),
   riskNodes: z.array(dashboardRiskNodeSchema),
   persistentRisks: z.array(dashboardRiskNodeSchema.extend({ evidenceStatus: evidenceStatusSchema, reviewStatus: reviewStatusSchema })),
   annualTrend: z.array(z.object({
     year: z.number().int(), medianFinalIndex: z.number().min(0).max(1).nullable(),
-    highRiskRate: z.number().min(0).max(1).nullable(), medianEass: z.number().min(0).max(1).nullable(),
+    meanFinalIndex: z.number().min(0).max(1).nullable(), q1FinalIndex: z.number().min(0).max(1).nullable(), q3FinalIndex: z.number().min(0).max(1).nullable(),
+    highRiskRate: z.number().min(0).max(1).nullable(), medianEass: z.number().min(0).max(1).nullable(), sampleCount: z.number().int().nonnegative(),
   })),
   industryRisk: z.array(z.object({
-    industry: z.string(), metricCode: z.enum(["ESGSI", "EASS", "IR", "UPR", "EAA_ESGSI"]),
+    industry: z.string(), metricCode: z.enum(["ESGSI", "EASS", "IR", "UPR", "EAA_ESI"]),
     sampleCount: z.number().int().nonnegative(), medianRiskValue: z.number().min(0).max(1).nullable(),
     q1: z.number().min(0).max(1).nullable(), q3: z.number().min(0).max(1).nullable(),
   })),
@@ -365,12 +410,35 @@ export const riskInterpretationFocusSchema = z.enum(["overview", "drivers", "evi
 export const riskInterpretationSchema = z.object({
   id: z.string(), companyId: z.string(), companyName: z.string(), reportYear: z.number().int(),
   generatedAt: z.string().datetime({ offset: true }), focus: riskInterpretationFocusSchema,
-  headline: z.string(), summary: z.string(), riskBand: riskBandSchema,
+  headline: z.string(), summary: z.string(),
+  researchBrief: z.object({ finding: z.string(), evidenceAssessment: z.string(), modelAgreement: z.string(), priorityAction: z.string() }),
+  riskBand: riskBandSchema,
   finalIndex: z.number().min(0).max(1).nullable(), evidenceCoverage: z.number().min(0).max(100),
+  robustness: z.object({
+    coverage: z.enum(["three_views", "two_views", "primary_only"]),
+    gsi: z.object({
+      gsiFinal: z.number(), gwScore: z.number(), coveragePenalty: z.number(), imbalance: z.number(),
+      eFocus: z.number(), sFocus: z.number(), gFocus: z.number(), modelVersion: z.string(), dataVersion: z.string(), qualityFlags: z.array(z.string()),
+    }).nullable(),
+    redFlags: z.object({
+      triggered: z.array(z.enum(["HIGH_ESGSI", "LOW_EASS", "HIGH_IR", "HIGH_UPR"])), count: z.number().int().nonnegative(),
+      classificationVersion: z.string(), reason: z.string(),
+    }),
+  }),
   drivers: z.array(z.object({
     metricCode: metricCodeSchema, label: z.string(), riskValue: z.number().min(0).max(1).nullable(),
     threshold: z.number().min(0).max(1).optional(), contribution: z.number().optional(),
-    status: z.enum(["attention", "watch", "unavailable"]), explanation: z.string(), citationIds: z.array(z.string()),
+    status: z.enum(["attention", "watch", "unavailable"]), explanation: z.string(),
+    finding: z.string(), whyItMatters: z.string(), evidenceAssessment: z.string(), evidenceGap: z.string(), nextAction: z.string(),
+    citationIds: z.array(z.string()), supportingCitationIds: z.array(z.string()), counterCitationIds: z.array(z.string()),
+    evidenceRelations: z.array(z.object({
+      citationId: z.string(), relation: z.enum(["supporting", "counter", "context"]), strength: z.enum(["strong", "moderate", "weak"]), relevance: z.string(),
+    })),
+    calculation: z.object({
+      rawValue: z.number().nullable(), normalizedValue: z.number().nullable(), riskValue: z.number().min(0).max(1).nullable(),
+      numerator: z.number().optional(), denominator: z.number().optional(), formulaVersion: z.string(), normalizationVersion: z.string(),
+      components: z.array(z.object({ label: z.string(), value: z.number().nullable(), unit: z.enum(["count", "ratio"]) })),
+    }),
   })),
   citations: z.array(z.object({
     id: z.string(), evidenceId: z.string(), kind: z.enum(["fact", "inference", "unknown"]),
@@ -414,9 +482,23 @@ export const evidencePageReferenceSchema = z.object({
 });
 
 export const analysisJobSchema = z.object({
-  jobId: z.string(), reportId: z.string(), status: z.enum(["queued", "running", "completed", "failed"]),
+  jobId: z.string(), reportId: z.string(), status: z.enum(["queued", "running", "completed", "failed", "cancelled"]),
   phase: z.enum(["collect", "preprocess", "extract", "classify", "calculate", "risk"]), progress: z.number().min(0).max(100),
+  stage: z.enum(["uploaded", "validating", "parsing", "segmenting", "extracting", "classifying", "calculating", "linking", "completed", "failed", "cancelled"]).optional(),
   resultCompanyId: z.string().optional(), error: z.object({ cause: z.string(), impact: z.string(), nextAction: z.string() }).optional(),
+  document: z.object({
+    documentId: z.string(), fileName: z.string(), fileSize: z.number().int().nonnegative(), fileHash: z.string(),
+    pageCount: z.number().int().positive().optional(), textPageCount: z.number().int().nonnegative().optional(),
+    textCoverage: z.number().min(0).max(1).optional(), deduplicated: z.boolean().optional(),
+  }).optional(),
+  result: z.object({
+    eass: z.number().min(0).max(1).nullable(), ir: z.number().min(0).max(1).nullable(), upr: z.number().min(0).max(1).nullable(),
+    evidenceCount: z.number().int().nonnegative(), environmentalAspectCount: z.number().int().nonnegative(),
+    calculationStatus: z.enum(["calculated", "unavailable"]), unavailableReason: z.string().optional(),
+    parserVersion: z.string(), extractorVersion: z.string(), formulaVersion: z.string(), calculatedAt: z.string().datetime({ offset: true }),
+  }).optional(),
+  attempts: z.number().int().nonnegative().optional(), createdAt: z.string().datetime({ offset: true }).optional(),
+  startedAt: z.string().datetime({ offset: true }).optional(), completedAt: z.string().datetime({ offset: true }).optional(),
 });
 
 const sourceFileKindSchema = z.enum(["esg_report", "financial_workbook", "violation_workbook", "company_score_workbook", "company_industry_workbook", "esg_rating_workbook", "negative_news", "archive", "unknown"]);

@@ -6,8 +6,8 @@ export default defineConfig([
   ...nextVitals,
   ...nextTs,
   globalIgnores([
-    ".next/**",
-    ".next-old-*/**",
+    ".next*/**",
+    ".greenlens-runtime/**",
     "playwright-report/**",
     "playwright-report-old*/**",
     "pw-results*/**",

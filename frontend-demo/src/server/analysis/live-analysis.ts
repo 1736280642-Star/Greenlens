@@ -13,19 +13,27 @@ import type {
   SampleGroup,
 } from "@/types";
 import type { CompanyYearQuery } from "@/repositories/analysis-repository";
-import { buildDashboardCommandCenter } from "@/repositories/dashboard-command-center";
+import { buildDashboardCommandCenter, lightNodeLimitPerBand, lightNodeMaxTotal } from "@/repositories/dashboard-command-center";
 import { netdiskSnapshot } from "@/server/netdisk/local-netdisk";
 import {
-  allPersistedEvidenceItems,
   persistedEvidenceSummaries,
   type PersistedEvidenceSummary,
   persistedEnvironmentalAspects,
   persistedEvidenceItems,
   persistedFailedPdfIdentities,
   persistedPdfDocuments,
-  runtimeDataCounts,
+  persistedEvidenceSamplesByKey,
+  listGsiScoreRecords,
+  loadDashboardSqliteSnapshot,
+  loadDashboardScoreHistoryRows,
+  type DashboardScoreHistoryRow,
+  runtimeDataRevision,
+  releaseSqliteMemory,
+  readDashboardPersistentCache,
+  writeDashboardPersistentCache,
 } from "@/server/netdisk/sqlite-store";
 import { alignReportYearToScores } from "@/server/netdisk/identity";
+import { evidenceIdsForMetric } from "@/lib/evidence-linking";
 
 const dataVersion = "NETDISK-SQLITE-1";
 const eaaDataVersion = "EAA-PANEL-2012-2024-V1";
@@ -34,6 +42,10 @@ const planningAlpha = 0.5;
 const evidenceAdjustmentWeight = 0.06;
 const evidenceCoverageBaseline = 0.7;
 const parameters = { planningAlpha, lambdaAction: 0.3, lambdaIndeterminate: 0.2, lambdaPlanning: 0.1, parameterVersion: "metric-contract-v2-live-1" };
+
+function currentDataVersion(base: string) {
+  return `${base}:${liveDataRevision()}`;
+}
 
 function ratio(numerator: number, denominator: number) {
   return denominator ? Number((numerator / denominator).toFixed(6)) : null;
@@ -132,7 +144,7 @@ function scorePublishDate(score: CompanyScoreRecord) {
   return score.sourceLabel.match(/_(\d{4}-\d{2}-\d{2})_/)?.[1] ?? `${score.reportYear}-12-31`;
 }
 
-function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearRecord | undefined, evidence: PersistedEvidenceSummary | undefined, eventCount: number, industry: string, evidenceItems: EvidenceItem[] = [], hasMatchedDocument = false): CompanyYearRecord {
+function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearRecord | undefined, evidence: PersistedEvidenceSummary | undefined, eventCount: number, industry: string, evidenceItems: EvidenceItem[] = [], hasMatchedDocument = false, version = currentDataVersion(eaaDataVersion)): CompanyYearRecord {
   const companyId = `stock-${score.stockCode}`;
   const reportYear = score.reportYear;
   const total = evidence?.total ?? 0;
@@ -144,17 +156,19 @@ function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearR
   const unverifiedPlanning = evidence?.unverifiedPlanning ?? 0;
   const esgsiAvailable = score.esgsiRaw != null && score.esgsiNorm != null;
   const finalAvailable = score.eaaEsiRaw != null && score.eaaEsiNorm != null;
-  const eass = score.EASS;
-  const ir = score.IR;
-  const upr = score.UPR;
+  const hasActionEvidence = total > 0;
+  const eass = hasActionEvidence ? ratio(implemented + planningAlpha * planning, total) : score.EASS;
+  const ir = hasActionEvidence ? ratio(indeterminate, total) : score.IR;
+  const upr = hasActionEvidence ? ratio(unverifiedPlanning, planning) : score.UPR;
+  const actionFormulaVersion = hasActionEvidence ? "evidence-actions-v2" : "eaa-panel-v1";
   const redFlags = scoreRedFlags(score);
   const riskBand = riskBandFromLabel(score.riskLevel);
   const topics = deriveEsgTopics(evidenceItems);
   const topicAvailable = evidenceItems.length > 0;
   const metrics = [
-    metric("EASS", "Environmental action substance", eass, eass == null ? null : 1 - eass, { threshold: 0.5, formulaVersion: "eaa-panel-v1", ...(eass != null ? { normalizationVersion: "eaa-panel-identity-v1" } : {}) }),
-    metric("IR", "Indeterminate statement ratio", ir, ir, { threshold: 0.33, formulaVersion: "eaa-panel-v1", ...(ir != null ? { normalizationVersion: "eaa-panel-identity-v1" } : {}) }),
-    metric("UPR", "Unverified planning ratio", upr, upr, { threshold: 0.6, formulaVersion: "eaa-panel-v1", ...(upr != null ? { normalizationVersion: "eaa-panel-identity-v1" } : {}) }),
+    metric("EASS", "Environmental action substance", eass, eass == null ? null : 1 - eass, { threshold: 0.5, formulaVersion: actionFormulaVersion, evidenceIds: evidenceIdsForMetric("EASS", evidenceItems), ...(eass != null ? { normalizationVersion: hasActionEvidence ? "evidence-identity-v2" : "eaa-panel-identity-v1" } : {}) }),
+    metric("IR", "Indeterminate statement ratio", ir, ir, { threshold: 0.33, formulaVersion: actionFormulaVersion, evidenceIds: evidenceIdsForMetric("IR", evidenceItems), ...(ir != null ? { normalizationVersion: hasActionEvidence ? "evidence-identity-v2" : "eaa-panel-identity-v1" } : {}) }),
+    metric("UPR", "Unverified planning ratio", upr, upr, { threshold: 0.6, formulaVersion: actionFormulaVersion, evidenceIds: evidenceIdsForMetric("UPR", evidenceItems), ...(upr != null ? { normalizationVersion: hasActionEvidence ? "evidence-identity-v2" : "eaa-panel-identity-v1" } : {}) }),
     metric("ESGSI", "Rhetoric-content gap", esgsiAvailable ? score.esgsiRaw : null, esgsiAvailable ? score.esgsiNorm : null, {
       ...(esgsiAvailable ? { normalizedValue: score.esgsiNorm } : {}),
       formulaVersion: "eaa-panel-v1",
@@ -162,7 +176,7 @@ function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearR
       normalizationScope: esgsiAvailable ? "year" : "none",
       ...(esgsiAvailable ? {} : { unavailableReason: "EAA panel did not provide a usable ESGSI value." }),
     }),
-    metric("EAA_ESGSI", "Environment-action-adjusted risk index", finalAvailable ? score.eaaEsiRaw : null, finalAvailable ? score.eaaEsiNorm : null, {
+    metric("EAA_ESI", "Environment-action-adjusted risk index", finalAvailable ? score.eaaEsiRaw : null, finalAvailable ? score.eaaEsiNorm : null, {
       ...(finalAvailable ? { normalizedValue: score.eaaEsiNorm } : {}),
       formulaVersion: "eaa-panel-v1",
       normalizationVersion: finalAvailable ? "eaa-panel-norm-v1" : "not_available",
@@ -170,6 +184,7 @@ function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearR
       ...(finalAvailable ? {} : { unavailableReason: "EAA panel did not provide a usable EAA-ESI value." }),
     }),
     metric("IMBALANCE", "ESG topic imbalance", topicAvailable ? topics.imbalanceScore : null, topicAvailable ? topics.imbalanceScore : null, {
+      evidenceIds: evidenceIdsForMetric("IMBALANCE", evidenceItems),
       formulaVersion: "esg-topics-v1",
       normalizationVersion: topicAvailable ? "identity-v1" : "not_available",
       normalizationScope: topicAvailable ? "none" : "none",
@@ -246,20 +261,15 @@ function scoreCompanyRecord(score: CompanyScoreRecord, financial: FinancialYearR
       sourceSheet: score.sourceSheet,
       sourceRow: score.sourceRow,
     },
-    versions: { schema: "metric-contract-v2", data: eaaDataVersion, feature: "eaa-company-scores-v1", model: "EAA-ESI", score: "eaa-panel-v1", threshold: "review-threshold-v1" },
+    versions: { schema: "metric-contract-v2", data: version, feature: "eaa-company-scores-v1", model: "EAA-ESI", score: "eaa-panel-v1", threshold: "review-threshold-v1" },
     computedAt: score.ingestedAt,
   } satisfies CompanyYearRecord;
 }
 
-function scoreCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>): CompanyYearRecord[] {
-  const evidenceByKey = new Map(persistedEvidenceSummaries().map((item) => [`${item.companyId}:${item.reportYear}`, item]));
+function scoreCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>, scopedCompanyIds: string[] = [], scopedReportYear?: number, version = currentDataVersion(eaaDataVersion), evidenceSampleLimit = 12, evidenceSampleCompanyIds = scopedCompanyIds): CompanyYearRecord[] {
+  const evidenceByKey = new Map(persistedEvidenceSummaries(scopedCompanyIds, scopedReportYear).map((item) => [`${item.companyId}:${item.reportYear}`, item]));
   const evidenceItemsByKey = new Map<string, EvidenceItem[]>();
-  for (const item of allPersistedEvidenceItems()) {
-    const key = `${item.companyId}:${item.reportYear}`;
-    const group = evidenceItemsByKey.get(key) ?? [];
-    group.push(item);
-    evidenceItemsByKey.set(key, group);
-  }
+  for (const [key, items] of persistedEvidenceSamplesByKey(evidenceSampleLimit, evidenceSampleCompanyIds, scopedReportYear).entries()) evidenceItemsByKey.set(key, items);
   const annualFinancial = new Map(snapshot.financialRecords.filter((item) => item.fiscalPeriodEnd.endsWith("-12-31") && item.reportType === "A").map((item) => [`${item.companyId}:${item.reportYear}`, item]));
   const violationCounts = new Map<string, number>();
   snapshot.violationEvents.forEach((event) => event.violationYears.forEach((year) => {
@@ -267,7 +277,7 @@ function scoreCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>): Comp
     violationCounts.set(key, (violationCounts.get(key) ?? 0) + 1);
   }));
   const industryByKey = new Map((snapshot.companyIndustries ?? []).map((item) => [`${item.stockCode}:${item.reportYear}`, item.industryGroup || item.industryName]));
-  const documentKeys = new Set(persistedPdfDocuments().flatMap((document) => document.stockCode && document.reportYear ? [`stock-${document.stockCode}:${document.reportYear}`] : []));
+  const documentKeys = new Set((snapshot.pdfDocuments ?? []).flatMap((document) => document.stockCode && document.reportYear ? [`stock-${document.stockCode}:${document.reportYear}`] : []));
   const scoreYearsByCompany = new Map<string, number[]>();
   for (const score of snapshot.companyScores ?? []) {
     const years = scoreYearsByCompany.get(score.companyId) ?? [];
@@ -278,7 +288,7 @@ function scoreCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>): Comp
     const reportYear = alignReportYearToScores(failed.reportYear, scoreYearsByCompany.get(failed.companyId) ?? []);
     if (reportYear) documentKeys.add(`${failed.companyId}:${reportYear}`);
   }
-  return (snapshot.companyScores ?? []).map((score) => scoreCompanyRecord(
+  const records = (snapshot.companyScores ?? []).map((score) => scoreCompanyRecord(
     score,
     annualFinancial.get(`${score.companyId}:${score.reportYear}`),
     evidenceByKey.get(`${score.companyId}:${score.reportYear}`),
@@ -286,18 +296,16 @@ function scoreCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>): Comp
     industryByKey.get(`${score.stockCode}:${score.reportYear}`) ?? "未分类",
     evidenceItemsByKey.get(`${score.companyId}:${score.reportYear}`) ?? [],
     documentKeys.has(`${score.companyId}:${score.reportYear}`),
+    version,
   )).sort((a, b) => b.reportYear - a.reportYear || a.stockCode.localeCompare(b.stockCode));
+  return records;
 }
 
 function pdfEvidenceCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>): CompanyYearRecord[] {
+  const version = currentDataVersion(dataVersion);
   const evidenceByKey = new Map(persistedEvidenceSummaries().map((item) => [`${item.companyId}:${item.reportYear}`, item]));
   const evidenceItemsByKey = new Map<string, EvidenceItem[]>();
-  for (const item of allPersistedEvidenceItems()) {
-    const key = `${item.companyId}:${item.reportYear}`;
-    const group = evidenceItemsByKey.get(key) ?? [];
-    group.push(item);
-    evidenceItemsByKey.set(key, group);
-  }
+  for (const [key, items] of persistedEvidenceSamplesByKey().entries()) evidenceItemsByKey.set(key, items);
   const documentsByKey = new Map<string, ReturnType<typeof persistedPdfDocuments>>();
   for (const document of persistedPdfDocuments()) {
     const reportYear = resolvedDocumentYear(document);
@@ -339,12 +347,13 @@ function pdfEvidenceCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>)
     const topics = deriveEsgTopics(evidenceItems);
     const topicAvailable = evidenceItems.length > 0;
     const metrics = [
-      metric("EASS", "Environmental action substance", eass, eass == null ? null : 1 - eass, { numerator: implemented + planningAlpha * planning, denominator: implemented + planning + indeterminate, threshold: 0.5 }),
-      metric("IR", "Indeterminate statement ratio", ir, ir, { numerator: indeterminate, denominator: implemented + planning + indeterminate, threshold: 0.33 }),
-      metric("UPR", "Unverified planning ratio", upr, upr, { numerator: unverifiedPlanning, denominator: planning, threshold: 0.6 }),
+      metric("EASS", "Environmental action substance", eass, eass == null ? null : 1 - eass, { numerator: implemented + planningAlpha * planning, denominator: implemented + planning + indeterminate, threshold: 0.5, evidenceIds: evidenceIdsForMetric("EASS", evidenceItems) }),
+      metric("IR", "Indeterminate statement ratio", ir, ir, { numerator: indeterminate, denominator: implemented + planning + indeterminate, threshold: 0.33, evidenceIds: evidenceIdsForMetric("IR", evidenceItems) }),
+      metric("UPR", "Unverified planning ratio", upr, upr, { numerator: unverifiedPlanning, denominator: planning, threshold: 0.6, evidenceIds: evidenceIdsForMetric("UPR", evidenceItems) }),
       metric("ESGSI", "Rhetoric-content gap", null, null, { unavailableReason: "Sentiment and substantive-information model outputs have not been connected." }),
-      metric("EAA_ESGSI", "Environment-action-adjusted risk index", null, null, { unavailableReason: "E-AA requires a calculated ESGSI input and cohort normalization." }),
+      metric("EAA_ESI", "Environment-action-adjusted risk index", null, null, { unavailableReason: "E-AA requires a calculated ESGSI input and cohort normalization." }),
       metric("IMBALANCE", "ESG topic imbalance", topicAvailable ? topics.imbalanceScore : null, topicAvailable ? topics.imbalanceScore : null, {
+        evidenceIds: evidenceIdsForMetric("IMBALANCE", evidenceItems),
         formulaVersion: "esg-topics-v1",
         normalizationVersion: topicAvailable ? "identity-v1" : "not_available",
         normalizationScope: topicAvailable ? "none" : "none",
@@ -366,33 +375,23 @@ function pdfEvidenceCompanyRecords(snapshot: ReturnType<typeof netdiskSnapshot>)
       indexBreakdown: { baseEsgsiNormalized: null, actionPenalty: { inputValue: eass == null ? null : 1 - eass, weight: parameters.lambdaAction, contribution: eass == null ? null : parameters.lambdaAction * (1 - eass) }, indeterminatePenalty: { inputValue: ir, weight: parameters.lambdaIndeterminate, contribution: ir == null ? null : parameters.lambdaIndeterminate * ir }, planningPenalty: { inputValue: upr, weight: parameters.lambdaPlanning, contribution: upr == null ? null : parameters.lambdaPlanning * upr }, evidenceAdjustment: { inputValue: evidenceCoverage / 100, weight: evidenceAdjustmentWeight, contribution: evidenceAdjustmentWeight * Math.max(0, evidenceCoverageBaseline - evidenceCoverage / 100) }, finalRaw: null, finalNormalized: null, normalizationVersion: "not_available", normalizationScope: "none" },
       riskClassification: { baseRisk: "unavailable", redFlags, redFlagCount: redFlags.length, assignedBand: "unavailable", classificationVersion: "live-signal-v1", reason: "EASS, IR and UPR are live review signals; final risk remains unavailable until ESGSI is connected." },
       panelMetadata: { sampleGroup: sampleGroup(total), includeNGe10: total >= 10, includeNGe20: total >= 20, analysisScope: "read-only Baidu Netdisk PDF evidence", lowSentenceCountFlag: total < 10, recommendedUse: "Review signal only", yearsAvailable: 1, firstYear: reportYear, lastYear: reportYear, duplicateCount: documents.length, selectedForPanel: total >= 10, qualityFlags: [...(financial ? [] : ["FINANCIAL_RECORD_MISSING"]), ...(total ? [] : ["PDF_EVIDENCE_MISSING"]), "ESGSI_MODEL_NOT_CONNECTED"], reportYearTextCheck: "derived_from_document_metadata", codeSource: "pdf_filename", sourceFile, sourceSheet: "PDF", sourceRow: 1 },
-      versions: { schema: "metric-contract-v2", data: dataVersion, feature: "pdf-evidence-v1", model: "not_connected", score: "partial-live-v1", threshold: "review-threshold-v1" },
+      versions: { schema: "metric-contract-v2", data: version, feature: "pdf-evidence-v1", model: "not_connected", score: "partial-live-v1", threshold: "review-threshold-v1" },
       computedAt: latest.ingestedAt,
     } satisfies CompanyYearRecord;
   }).sort((a, b) => b.reportYear - a.reportYear || a.stockCode.localeCompare(b.stockCode));
 }
 
-const recordsCache = globalThis as typeof globalThis & { __greenlensLiveRecords?: { revision: string; records: CompanyYearRecord[] } };
+const recordsCache = globalThis as typeof globalThis & {
+  __greenlensLiveRecords?: { revision: string; records: CompanyYearRecord[] };
+  __greenlensDataRevision?: { expiresAt: number; value: string };
+};
 
 export function liveDataRevision(): string {
-  const snapshot = netdiskSnapshot();
-  const counts = runtimeDataCounts();
-  return [
-    snapshot.lastSyncedAt ?? "none",
-    snapshot.files.length,
-    snapshot.financialRecords.length,
-    snapshot.companyScores?.length ?? 0,
-    snapshot.companyIndustries?.length ?? 0,
-    snapshot.esgRatings?.length ?? 0,
-    snapshot.violationEvents.length,
-    snapshot.pdfDocuments?.length ?? 0,
-    snapshot.documentEvidence?.length ?? 0,
-    snapshot.environmentalAspects?.length ?? 0,
-    counts.evidenceItems,
-    counts.environmentalAspects,
-    counts.pdfDocuments,
-    counts.evidenceRevision,
-  ].join(":");
+  const cached = recordsCache.__greenlensDataRevision;
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = runtimeDataRevision();
+  recordsCache.__greenlensDataRevision = { expiresAt: Date.now() + 2_000, value };
+  return value;
 }
 
 export function liveCompanyRecords(): CompanyYearRecord[] {
@@ -406,21 +405,129 @@ export function liveCompanyRecords(): CompanyYearRecord[] {
 }
 
 export function liveHistories(records = liveCompanyRecords()): CompanyMetricHistoryPoint[] {
-  return records.map((record) => ({ companyId: record.companyId, reportYear: record.reportYear, finalIndexRaw: record.finalIndexRaw, finalIndex: record.finalIndex, riskBand: record.riskBand, metrics: Object.fromEntries(record.metrics.map((item) => [item.code, { rawValue: item.rawValue, normalizedValue: item.normalizedValue, riskValue: item.riskValue, calculationStatus: item.calculationStatus }])), dataVersion }));
+  const version = currentDataVersion(dataVersion);
+  return records.map((record) => ({ companyId: record.companyId, reportYear: record.reportYear, finalIndexRaw: record.finalIndexRaw, finalIndex: record.finalIndex, riskBand: record.riskBand, metrics: Object.fromEntries(record.metrics.map((item) => [item.code, { rawValue: item.rawValue, normalizedValue: item.normalizedValue, riskValue: item.riskValue, calculationStatus: item.calculationStatus }])), dataVersion: version }));
+}
+
+function projectedScoreHistoryRecords(rows: DashboardScoreHistoryRow[], version: string): CompanyMetricHistoryPoint[] {
+  const value = (rawValue: number | null, normalizedValue: number | null, riskValue: number | null) => ({
+    rawValue, normalizedValue, riskValue,
+    calculationStatus: normalizedValue == null ? "unavailable" as const : "calculated" as const,
+  });
+  return rows.map((row) => ({
+    companyId: row.companyId, reportYear: row.reportYear, finalIndexRaw: row.eaaEsiRaw, finalIndex: row.eaaEsiNorm,
+    riskBand: riskBandFromLabel(row.riskLevel),
+    metrics: {
+      EASS: value(row.eass, row.eass, row.eass == null ? null : 1 - row.eass),
+      IR: value(row.ir, row.ir, row.ir), UPR: value(row.upr, row.upr, row.upr),
+      ESGSI: value(row.esgsiRaw, row.esgsiNorm, row.esgsiNorm), EAA_ESI: value(row.eaaEsiRaw, row.eaaEsiNorm, row.eaaEsiNorm),
+    },
+    dataVersion: version,
+  }));
+}
+
+function projectedScoreQualityRecords(rows: DashboardScoreHistoryRow[]): PanelYearSummary[] {
+  const years = new Map<number, DashboardScoreHistoryRow[]>();
+  for (const row of rows) years.set(row.reportYear, [...(years.get(row.reportYear) ?? []), row]);
+  return [...years.entries()].map(([year, items]) => ({
+    year, sourceFile: "Baidu Netdisk company score panel",
+    sourceRows: items.reduce((sum, item) => sum + item.environmentalSentenceCount, 0), uniqueCompanyYears: items.length,
+    duplicateGroups: items.filter((item) => item.duplicateCount > 1).length,
+    extraDuplicateRows: items.reduce((sum, item) => sum + Math.max(0, item.duplicateCount - 1), 0),
+    selectedNLt10: items.filter((item) => item.sampleGroup === "low_n_lt_10").length,
+    selectedN10To19: items.filter((item) => item.sampleGroup === "robustness_n_10_19").length,
+    selectedNGe20: items.filter((item) => item.sampleGroup === "main_n_ge_20").length,
+    titleTargetYearNotFound: 0, qualityFlaggedRows: items.filter((item) => item.qualityFlagCount > 1).length, codeRecoveredFromCompany: 0,
+  })).sort((a, b) => a.year - b.year);
 }
 
 export function liveQuality(records = liveCompanyRecords()): PanelYearSummary[] {
   const years = new Map<number, CompanyYearRecord[]>();
-  records.forEach((record) => years.set(record.reportYear, [...(years.get(record.reportYear) ?? []), record]));
+  records.forEach((record) => {
+    const annual = years.get(record.reportYear) ?? [];
+    annual.push(record);
+    years.set(record.reportYear, annual);
+  });
   return [...years.entries()].map(([year, items]) => ({ year, sourceFile: "Baidu Netdisk PDF queue", sourceRows: items.reduce((sum, item) => sum + item.textProcessing.environmentalSentenceCount, 0), uniqueCompanyYears: items.length, duplicateGroups: items.filter((item) => item.panelMetadata.duplicateCount > 1).length, extraDuplicateRows: items.reduce((sum, item) => sum + Math.max(0, item.panelMetadata.duplicateCount - 1), 0), selectedNLt10: items.filter((item) => item.panelMetadata.sampleGroup === "low_n_lt_10").length, selectedN10To19: items.filter((item) => item.panelMetadata.sampleGroup === "robustness_n_10_19").length, selectedNGe20: items.filter((item) => item.panelMetadata.sampleGroup === "main_n_ge_20").length, titleTargetYearNotFound: 0, qualityFlaggedRows: items.filter((item) => item.panelMetadata.qualityFlags.length > 1).length, codeRecoveredFromCompany: 0 })).sort((a, b) => a.year - b.year);
 }
 
+const dashboardCache = globalThis as typeof globalThis & {
+  __greenlensDashboardCache?: Map<string, { revision: string; expiresAt: number; value: DashboardCommandCenterData }>;
+};
+const dashboardCacheTtlMs = 5 * 60_000;
+const dashboardCacheMaxEntries = 24;
+
 export function liveDashboard(query: CompanyYearQuery = {}, options: { light?: boolean } = {}): DashboardCommandCenterData {
-  const records = liveCompanyRecords();
-  const availableYears = new Set(records.map((record) => record.reportYear));
-  const latestYear = availableYears.size ? Math.max(...availableYears) : new Date().getFullYear();
-  const resolvedQuery = query.year != null && !availableYears.has(query.year) ? { ...query, year: latestYear } : query;
-  return buildDashboardCommandCenter(records, liveHistories(records), liveQuality(records), resolvedQuery, options);
+  const profile = (stage: string) => {
+    const memory = process.memoryUsage();
+    if (process.env.GREENLENS_PROFILE_DASHBOARD !== "1") return;
+    console.log(JSON.stringify({ event: "dashboard-profile", stage, heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024), rssMb: Math.round(memory.rss / 1024 / 1024) }));
+  };
+  profile("start");
+  const revision = liveDataRevision();
+  profile("revision");
+  const cache = dashboardCache.__greenlensDashboardCache ??= new Map();
+  const cacheKey = JSON.stringify({
+    format: "dashboard-summary-v1",
+    year: query.year ?? null,
+    industry: query.industry ?? null,
+    riskBand: query.riskBand ?? null,
+    sampleGroup: query.sampleGroup ?? null,
+    light: options.light === true,
+  });
+  const cached = cache.get(cacheKey);
+  if (cached?.revision === revision && cached.expiresAt > Date.now()) return cached.value;
+  if (options.light === true) {
+    const persisted = readDashboardPersistentCache<DashboardCommandCenterData>(cacheKey, revision);
+    if (persisted) {
+      cache.set(cacheKey, { revision, expiresAt: Date.now() + dashboardCacheTtlMs, value: persisted });
+      return persisted;
+    }
+  }
+  const snapshot = loadDashboardSqliteSnapshot(query);
+  profile("snapshot");
+  const scores = snapshot.companyScores as unknown as CompanyScoreRecord[];
+  const historyRows = loadDashboardScoreHistoryRows(snapshot.selectedCompanyIds, snapshot.resolvedYear);
+  const currentSnapshot = { ...snapshot, companyScores: scores.filter((score) => score.reportYear === snapshot.resolvedYear) };
+  const evidenceSampleCompanyIds = options.light
+    ? sampledDashboardCompanyIds(currentSnapshot.companyScores)
+    : snapshot.selectedCompanyIds;
+  const records = currentSnapshot.companyScores.length
+    ? scoreCompanyRecords(currentSnapshot as unknown as ReturnType<typeof netdiskSnapshot>, snapshot.selectedCompanyIds, snapshot.resolvedYear, `${eaaDataVersion}:${revision}`, options.light ? 3 : 12, evidenceSampleCompanyIds)
+    : [];
+  profile("records");
+  const resolvedQuery = { ...query, year: snapshot.resolvedYear };
+  const histories = projectedScoreHistoryRecords(historyRows, `${dataVersion}:${revision}`);
+  const quality = projectedScoreQualityRecords(historyRows);
+  const dashboard = buildDashboardCommandCenter(records, histories, quality, resolvedQuery, {
+    ...options,
+    gsiRecords: listGsiScoreRecords(snapshot.selectedCompanyIds, snapshot.resolvedYear),
+  });
+  profile("dashboard");
+  releaseSqliteMemory();
+  profile("sqlite-shrink");
+  cache.delete(cacheKey);
+  cache.set(cacheKey, { revision, expiresAt: Date.now() + dashboardCacheTtlMs, value: dashboard });
+  if (options.light === true) writeDashboardPersistentCache(cacheKey, revision, dashboard);
+  while (cache.size > dashboardCacheMaxEntries) cache.delete(cache.keys().next().value!);
+  return dashboard;
+}
+
+function sampledDashboardCompanyIds(scores: CompanyScoreRecord[]): string[] {
+  const selected: string[] = [];
+  const selectedIds = new Set<string>();
+  for (const band of ["high", "medium", "low", "unavailable"] as RiskBand[]) {
+    let bandCount = 0;
+    for (const score of scores) {
+      if (riskBandFromLabel(score.riskLevel) !== band || selectedIds.has(score.companyId)) continue;
+      selected.push(score.companyId);
+      selectedIds.add(score.companyId);
+      bandCount += 1;
+      if (selected.length >= lightNodeMaxTotal || bandCount >= lightNodeLimitPerBand) break;
+    }
+    if (selected.length >= lightNodeMaxTotal) break;
+  }
+  return selected;
 }
 
 export function filterLiveCompanies(query: CompanyYearQuery = {}) {
@@ -435,3 +542,6 @@ export function filterLiveCompanies(query: CompanyYearQuery = {}) {
 
 export function liveEvidence(companyId: string, reportYear?: number): EvidenceItem[] { return persistedEvidenceItems(companyId, reportYear); }
 export function liveEnvironmentalAspects(companyId: string, reportYear: number): EnvironmentalAspectScore[] { return persistedEnvironmentalAspects(companyId, reportYear); }
+export function liveGsiScore(companyId: string, reportYear: number) {
+  return listGsiScoreRecords([companyId], reportYear).find((item) => item.companyId === companyId && item.reportYear === reportYear) ?? null;
+}

@@ -107,7 +107,7 @@ function buildReviewTasks(): DashboardReviewTask[] {
         id: `rt-${record.companyId}-${record.reportYear}-final-risk`,
         companyId: record.companyId,
         reviewType: "risk_band",
-        metricCode: "EAA_ESGSI",
+        metricCode: "EAA_ESI",
         reason: "行动和计划惩罚推高最终调整指数。",
         impact: Math.round(record.finalIndex * 100),
         ageHours,

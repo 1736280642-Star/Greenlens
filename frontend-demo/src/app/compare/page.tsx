@@ -1,30 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { AlertTriangle, Download, Plus, RefreshCw, Share2 } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { analysisRepository } from "@/repositories";
-import { useDemoStore, defaultYear } from "@/stores/demo-store";
-import { getMetric, type CompanyYearRecord, type MetricCode } from "@/types";
-
-const colors=["#30D5E8","#5B8CFF","#F4D35E","#E879F9","#FF9F43"];
-const metricDefs:Array<[MetricCode,string]>=[["EASS","EASS"],["IR","IR"],["UPR","UPR"],["ESGSI","ESGSI"],["EAA_ESGSI","E-AA-ESGSI"],["IMBALANCE","ESG 失衡"]];
-
-export default function ComparePage(){
-  const {year,compareIds,toggleCompare,showToast,notify,setFilters}=useDemoStore(); const [companies,setCompanies]=useState<CompanyYearRecord[]>([]); const [view,setView]=useState<"metrics"|"actions"|"timeline">("metrics"); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null);
-  useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active){setLoading(true);setError(null);}});analysisRepository.listCompanies("success",{year}).then((items)=>{if(active)setCompanies(items);}).catch((reason)=>{if(active)setError(reason instanceof Error?reason.message:"对比数据请求失败。");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[year]);
-  const selected=useMemo(()=>companies.filter((company)=>compareIds.includes(company.companyId)),[companies,compareIds]);
-  function exportCompare(){notify("对比摘要已导出",`${selected.length} 家合成公司的指标对比已生成。`);showToast("对比摘要已导出");}
-  if(loading)return<div className="page"><div className="skeleton skeleton-header"/><div className="panel skeleton-panel"/></div>;
-  if(error)return<div className="state-panel"><AlertTriangle size={24}/><h2>对比数据载入失败</h2><p><strong>成因：</strong>{error}<br/><strong>影响：</strong>当前无法生成跨企业指标对比。<br/><strong>下一步：</strong>检查 Repository 配置或后端状态后重试。</p><button className="primary-button" onClick={()=>location.reload()}><RefreshCw size={15}/>重新载入</button></div>;
-  if(!companies.length)return<div className="state-panel"><RefreshCw size={24}/><h2>当前报告年没有可对比记录</h2><p>{year} 年没有返回公司-年份样本，不能把其他年度数值替代为当前年度。</p><button className="primary-button" onClick={()=>setFilters({year:defaultYear})}>恢复默认年份样本</button></div>;
-  if(selected.length<2)return<div className="state-panel"><Plus size={24}/><h2>选择至少 2 家企业</h2><p>从企业库选择 2-5 家合成公司后，对比 EASS、IR、UPR、ESGSI 和最终指数。</p><Link className="primary-button" href="/companies">从企业库选择</Link></div>;
-  return<div className="page compare-page">
-    <header className="page-header"><div><h2>指标对比</h2><p>{year} 报告年 · 统一显示原始值与方向，不生成企业“好坏”排名。</p></div><div className="header-actions"><button className="secondary-button" onClick={()=>{navigator.clipboard.writeText(location.href);showToast("分享链接已复制");}}><Share2 size={15}/>复制链接</button><button className="secondary-button" onClick={exportCompare}><Download size={15}/>导出摘要</button></div></header>
-    <section className="compare-selector"><div className="company-chips">{selected.map((company,index)=><button key={company.companyId} style={{"--series-color":colors[index]} as React.CSSProperties} onClick={()=>toggleCompare(company.companyId)}><i/>{company.companyName}<span>×</span></button>)}<Link href="/companies" className="icon-button" title="添加企业"><Plus/></Link></div><code>metric-contract-v2</code></section>
-    <div className="tabs" role="tablist">{[["metrics","指标点图"],["actions","行动构成"],["timeline","年度时间线"]].map(([id,label])=><button role="tab" aria-selected={view===id} className={view===id?"active":""} onClick={()=>setView(id as typeof view)} key={id}>{label}</button>)}</div>
-    {view==="metrics"&&<section className="panel metric-dotplot-panel"><header className="panel-header"><div><h3>核心指标 Dumbbell 对比</h3><p>EASS 越高越实质；其余指标越高风险越高</p></div><span>归一化 0–100%</span></header><div className="metric-dotplot"><div className="dotplot-axis"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>{metricDefs.map(([code,label])=><div className="metric-dot-row" key={code}><strong>{label}<small>{code==="EASS"?"高更实质":"高更需关注"}</small></strong><div className="dot-track"><i className="dot-range"/>{selected.map((company,index)=>{const normalizedValue=getMetric(company,code)?.normalizedValue;if(normalizedValue==null)return<span className="metric-unavailable" key={company.companyId} title={`${company.companyName} 暂不可计算`}>--</span>;const value=Math.round(normalizedValue*100);return<span className="metric-dot" key={company.companyId} style={{left:`${value}%`,background:colors[index]}} title={`${company.companyName} ${value}%`}><b>{value}</b></span>;})}</div></div>)}</div></section>}
-    {view==="actions"&&<section className="panel action-compare-panel"><header className="panel-header"><div><h3>环境行动分类构成</h3><p>已实施 / 计划 / 模糊声明</p></div></header><div className="action-compare-list">{selected.map((company)=><div key={company.companyId}><span><strong>{company.companyName}</strong><code>{company.environmentalActions.totalStatements} 条</code></span><div className="action-stack"><i style={{width:`${company.environmentalActions.implemented/company.environmentalActions.totalStatements*100}%`,background:"#38E07B"}}/><i style={{width:`${company.environmentalActions.planning/company.environmentalActions.totalStatements*100}%`,background:"#5B8CFF"}}/><i style={{width:`${company.environmentalActions.indeterminate/company.environmentalActions.totalStatements*100}%`,background:"#F4D35E"}}/></div></div>)}</div><footer className="action-key"><span><i style={{background:"#38E07B"}}/>已实施</span><span><i style={{background:"#5B8CFF"}}/>计划</span><span><i style={{background:"#F4D35E"}}/>模糊</span></footer></section>}
-    {view==="timeline"&&<section className="panel timeline-panel"><header className="panel-header"><h3>报告与事件时间线</h3><span>辅助证据，不直接替代 E-AA-ESGSI</span></header>{selected.map((company,index)=><div className="timeline-row" key={company.companyId}><strong>{company.companyName}</strong><div><span style={{left:"28%",borderColor:colors[index]}}>{company.reportYear-2} 报告</span><span style={{left:"55%",borderColor:colors[index]}}>{company.reportYear-1} 事件</span><span style={{left:"82%",borderColor:colors[index]}}>{company.reportYear} 报告</span></div></div>)}</section>}
-  </div>;
+export default function LegacyComparePage() {
+  redirect("/companies");
 }

@@ -18,7 +18,9 @@ Every metric returns three distinct values:
 
 Each metric also returns `formulaVersion`, `normalizationVersion`, `normalizationScope`, calculation status, evidence IDs, and numerator/denominator where applicable.
 
-## 3. E-AA-ESGSI method chain
+## 3. EAA-ESI method chain
+
+User-facing names are `ESI` and `EAA-ESI` because the product analysis is environment-focused. Existing `ESGSI`, `EAA_ESI`, and `HIGH_ESGSI` identifiers remain compatibility codes for ingested source workbooks and API history; UI labels must not expose them as the product metric name.
 
 ```text
 collect_ESG_reports
@@ -34,7 +36,7 @@ collect_ESG_reports
 -> calculate_IR
 -> calculate_UPR
 -> calculate_ESGSI
--> calculate_eaa_esgsi
+-> calculate_eaa_esi
 -> risk_classification
 ```
 
@@ -64,13 +66,22 @@ UPR uses an explicit `PlanningVerificationSummary`. The v1 rule requires deadlin
 ### Final index
 
 ```text
-EAA_ESGSI_raw = ESGSI_normalized
+EAA_ESI_raw = ESGSI_normalized
                 + lambdaAction * (1 - EASS)
                 + lambdaIndeterminate * IR
                 + lambdaPlanning * UPR
 ```
 
 The API separately returns the final normalized value and its normalization scope/version.
+
+### Robustness views
+
+The Dashboard treats EAS / EAA-ESI as the primary analysis and exposes two robustness views in the same panel:
+
+- GSI: a separate E/S/G dictionary-coverage model joined by company-year, with GSI final score, coverage penalty, imbalance, annual mean/median and quartiles;
+- Red flag: threshold-trigger summaries derived from the primary model, not a third independent model.
+
+Neither robustness view changes the primary risk band or constitutes a confirmed greenwashing judgment. Missing GSI matches remain `null`; they do not become zero and do not block the primary view.
 
 ## 4. Risk classification
 

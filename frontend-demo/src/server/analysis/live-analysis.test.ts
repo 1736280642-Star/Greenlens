@@ -1,11 +1,24 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { companyYearListSchema, dashboardCommandCenterSchema } from "@/contracts/analysis";
-import { ingestNetdiskRows } from "@/server/netdisk/local-netdisk";
-import { liveCompanyRecords, liveDashboard } from "./live-analysis";
+
+const isolatedDb = path.join(mkdtempSync(path.join(tmpdir(), "greenlens-live-analysis-")), "test.sqlite");
+process.env.GREENLENS_SQLITE_PATH = isolatedDb;
+process.env.GREENLENS_DISABLE_LEGACY_MIGRATION = "1";
+
+async function loadRuntime() {
+  return Promise.all([
+    import("@/server/netdisk/local-netdisk"),
+    import("./live-analysis"),
+  ]).then(([netdisk, live]) => ({ netdisk, live }));
+}
 
 describe("EAA score records in live analysis", () => {
-  it("builds schema-valid company-year records from EAA scores and drives the dashboard", () => {
-    ingestNetdiskRows([
+  it("builds schema-valid company-year records from EAA scores and drives the dashboard", async () => {
+    const { netdisk, live } = await loadRuntime();
+    netdisk.ingestNetdiskRows([
       {
         fsid: "score-2024", filename: "company_level_scoring_2024_EAA_ESI.xlsx", size: 10, rows: [
           {
@@ -25,15 +38,22 @@ describe("EAA score records in live analysis", () => {
         ],
       },
     ], false);
+    netdisk.persistNetdiskSnapshot();
 
-    const records = liveCompanyRecords();
+    const records = live.liveCompanyRecords();
     expect(records).toHaveLength(1);
     const record = companyYearListSchema.parse(records)[0];
     expect(record.finalIndex).toBe(0.65);
     expect(record.riskBand).toBe("high");
-    expect(record.metrics.find((item) => item.code === "EAA_ESGSI")?.normalizedValue).toBe(0.65);
+    expect(record.metrics.find((item) => item.code === "EAA_ESI")?.normalizedValue).toBe(0.65);
     expect(record.panelMetadata.sampleGroup).toBe("main_n_ge_20");
     expect(record.industry).toBe("货币金融服务");
-    dashboardCommandCenterSchema.parse(liveDashboard({ year: 2024 }));
+    const dashboardResult = live.liveDashboard({ year: 2024, industry: "货币金融服务", riskBand: "high" });
+    const dashboard = dashboardCommandCenterSchema.parse(dashboardResult);
+    expect(dashboard.kpis.sampleCount).toBe(1);
+    expect(dashboard.riskNodes[0]?.companyName).toBe("Synthetic Bank");
+    expect(dashboard.scope.industry).toBe("货币金融服务");
+    expect(dashboard.annualTrend).toHaveLength(1);
+    expect(live.liveDashboard({ year: 2024, industry: "货币金融服务", riskBand: "high" })).toBe(dashboardResult);
   }, 60_000);
 });

@@ -17,8 +17,8 @@ const versions = {
   schema: "metric-contract-v2",
   data: "SYN-2026.08",
   feature: "ESG-TEXT-2.0",
-  model: "EAA-ESGSI-DEMO-2.0",
-  score: "eaa-esgsi-v2",
+  model: "EAA-ESI-DEMO-2.0",
+  score: "eaa-esi-v2",
   threshold: "risk-quantile-redflag-v1",
 };
 
@@ -35,7 +35,7 @@ export function evidenceIdsFor(companyId: string): Record<MetricCode, string[]> 
     ? { action: "ev-action-1", ir: "ev-ir-1", upr: "ev-2", metric: "ev-3", index: "ev-index-1" }
     : { action: `${companyId}-action`, ir: `${companyId}-ir`, upr: `${companyId}-upr`, metric: `${companyId}-metric`, index: `${companyId}-index` };
   return {
-    EASS: [ids.action], IR: [ids.ir], UPR: [ids.upr], ESGSI: [ids.metric], EAA_ESGSI: [ids.index], IMBALANCE: [ids.metric],
+    EASS: [ids.action], IR: [ids.ir], UPR: [ids.upr], ESGSI: [ids.metric], EAA_ESI: [ids.index], IMBALANCE: [ids.metric],
   };
 }
 
@@ -119,8 +119,8 @@ function metric(
     riskValue: round(riskValue),
     riskDirection: code === "EASS" ? "lower_is_risk" : code === "IMBALANCE" ? "contextual" : "higher_is_risk",
     formulaVersion: `${code.toLowerCase()}-v2`,
-    normalizationVersion: code === "EAA_ESGSI" ? "eaa-demo-cohort-minmax-v1" : code === "ESGSI" ? "esgsi-demo-v1" : "identity-v1",
-    normalizationScope: code === "EAA_ESGSI" ? "synthetic_demo" : "none",
+    normalizationVersion: code === "EAA_ESI" ? "eaa-demo-cohort-minmax-v1" : code === "ESGSI" ? "esgsi-demo-v1" : "identity-v1",
+    normalizationScope: code === "EAA_ESI" ? "synthetic_demo" : "none",
     calculationStatus: "mock",
     evidenceIds,
     ...options,
@@ -188,7 +188,7 @@ function createCompany(item: PreparedCompany): CompanyYearRecord {
     metric("IR", "模糊声明比例", item.ir, item.ir, item.ir, evidenceIds.IR, { numerator: indeterminate, denominator: totalStatements, threshold: .33, weight: scoringParameters.lambdaIndeterminate, contribution: item.indeterminatePenalty }),
     metric("UPR", "未验证计划比例", item.upr, item.upr, item.upr, evidenceIds.UPR, { numerator: item.unverifiedPlanning, denominator: planning, threshold: .6, weight: scoringParameters.lambdaPlanning, contribution: item.planningPenalty }),
     metric("ESGSI", "修辞—内容差异", item.esgsiRaw, seed.esgsiNormalized, seed.esgsiNormalized, evidenceIds.ESGSI, { threshold: .55, contribution: seed.esgsiNormalized }),
-    metric("EAA_ESGSI", "环境行动调整型漂绿风险指数", item.finalRaw, finalIndex, finalIndex, evidenceIds.EAA_ESGSI, { threshold: highQuantile }),
+    metric("EAA_ESI", "环境行动调整型漂绿风险指数", item.finalRaw, finalIndex, finalIndex, evidenceIds.EAA_ESI, { threshold: highQuantile }),
     metric("IMBALANCE", "ESG 关注失衡", seed.imbalance, seed.imbalance, seed.imbalance, evidenceIds.IMBALANCE, { threshold: .45 }),
   ];
   const sampleGroup = totalStatements >= 20 ? "main_n_ge_20" : totalStatements >= 10 ? "robustness_n_10_19" : "low_n_lt_10";
@@ -433,7 +433,7 @@ function createEvidence(company: CompanyYearRecord): EvidenceItem[] {
   const [irId] = ids.IR;
   const [metricId] = ids.IMBALANCE;
   const [actionId] = ids.EASS;
-  const [indexId] = ids.EAA_ESGSI;
+  const [indexId] = ids.EAA_ESI;
   const externalEvent = violationEvents.find((event) => event.companyId === company.companyId);
   const externalId = company.companyId === "cy-materials" ? "ev-ext-1" : `${company.companyId}-external`;
   const sourceLabel = `${company.reportYear} 可持续发展报告（合成）`;
@@ -442,7 +442,7 @@ function createEvidence(company: CompanyYearRecord): EvidenceItem[] {
     { id: irId, companyId: company.companyId, reportYear: company.reportYear, type: "claim", metricCode: "IR", title: "环境声明缺少可核验的量化边界", excerpt: "报告使用持续优化、稳步提升等方向性措辞，但没有提供对应的绝对量、同比口径或完成状态。", page: 45, sourceLabel, status: company.evidenceStatus },
     { id: metricId, companyId: company.companyId, reportYear: company.reportYear, type: "metric", metricCode: "ESGSI", title: "实质环境信息缺少跨年可比数据", excerpt: "报告列出环境改善方向，但没有同时提供核算边界、绝对量和与上一年度可比的量化结果。", page: 47, sourceLabel, status: company.evidenceStatus === "verified" ? "verified" : "pending" },
     { id: actionId, companyId: company.companyId, reportYear: company.reportYear, type: "action", actionClass: "planning", metricCode: "EASS", aspectId: `${company.companyId}-aspect-1`, title: "环境行动仍处于计划阶段", excerpt: "报告描述后续追踪机制，但未提供已经实施的项目结果、预算投入或可核验绩效。", page: 43, sourceLabel, status: company.evidenceStatus === "verified" ? "verified" : "pending" },
-    { id: indexId, companyId: company.companyId, reportYear: company.reportYear, type: "verification", metricCode: "EAA_ESGSI", title: "最终指数由 ESGSI 与三项处罚构成", excerpt: "该证据用于回溯 ESGSI、行动不足、模糊声明与未验证计划对最终原始值和归一化结果的影响。", page: 49, sourceLabel, status: company.evidenceStatus },
+    { id: indexId, companyId: company.companyId, reportYear: company.reportYear, type: "verification", metricCode: "EAA_ESI", title: "最终指数由 ESGSI 与三项处罚构成", excerpt: "该证据用于回溯 ESGSI、行动不足、模糊声明与未验证计划对最终原始值和归一化结果的影响。", page: 49, sourceLabel, status: company.evidenceStatus },
     { id: externalId, companyId: company.companyId, reportYear: company.reportYear, type: "external", title: externalEvent?.title ?? "外部事件待接入", excerpt: externalEvent?.behavior ?? "当前没有可用的外部事件。", eventDate: externalEvent?.announcementDate, sourceLabel: externalEvent?.sourceLabel ?? "监管事件数据集（合成）", sourceUrl: externalEvent?.sourceUrl, status: externalEvent?.reviewStatus ?? "insufficient" },
   ];
 }

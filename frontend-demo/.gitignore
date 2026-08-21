@@ -1,7 +1,14 @@
 node_modules/
 .next/
+.next-*/
+.next-old-*/
 playwright-report/
+playwright-report-old*/
+pw-results*/
+pw-verify*/
+pw-trace-debug/
 test-results/
+test-results-old*/
 *.tsbuildinfo
 *.log
 .env*

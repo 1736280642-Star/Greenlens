@@ -1,6 +1,6 @@
 # GreenLens Frontend Demo
 
-GreenLens is a desktop-first ESG evidence investigation workspace. It uses fixed synthetic data to demonstrate the complete flow from anomaly discovery to cited evidence, human review, and an explicitly marked research export.
+GreenLens is a desktop-first ESG evidence investigation workspace. Deterministic tests use synthetic data; production-like local runs can also persist and parse a user-uploaded text PDF through the HTTP Repository.
 
 > 演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。
 
@@ -44,7 +44,7 @@ The Playwright suite covers the investigation workflow, report success/OCR/failu
 | `/companies` | Search, sort, paginate, configure columns, compare, and export 30 synthetic companies |
 | `/companies/cy-materials` | Inspect contributions, report evidence, external facts, ratings, and history |
 | `/compare` | Compare 2-5 companies without producing a simplistic ranking |
-| `/reports` | Create and poll an analysis job through the active Repository |
+| `/reports` | Upload a PDF, poll a persistent analysis job, and open linked evidence |
 | `/review` | Record a human decision and undo it within 8 seconds |
 | `/methodology` | Explain model logic, boundaries, and synthetic validation metrics |
 
@@ -54,7 +54,7 @@ The Playwright suite covers the investigation workflow, report success/OCR/failu
 - Zustand persists filters, comparisons, reviews, and notifications in `localStorage`, but never stores identity or uploaded file contents.
 - ECharts renders the EASS × E-AA-ESGSI quadrant, metric incidence, heatmaps, dumbbells, and operational charts; TanStack Table owns company sorting and filtering.
 - `AnalysisRepository` has Mock and HTTP implementations; both validate metric, version, cross-field, and unavailable-value rules with Zod before data reaches a page.
-- Report scanning creates a job and polls `getAnalysisJob`; the browser reads only file metadata, never the PDF body.
+- In HTTP mode, report scanning sends the selected PDF as multipart data. The Node backend validates and privately persists it, PDF.js extracts page text, and the existing evidence pipeline derives page-linked EASS/IR/UPR signals. Mock mode remains metadata-only for deterministic tests.
 - Company and evidence queries include `reportYear`; URL parameters preserve company, tab, year, and evidence context for refreshable demonstrations.
 - Review pages and drawers persist through `saveReview` before updating the local UI cache.
 
@@ -67,4 +67,5 @@ The underlying reason for these boundaries is migration cost: a real API can rep
 - [Design decisions](docs/design-decisions.md)
 - [Mock data dictionary](docs/mock-data-dictionary.md)
 - [Demo guide](docs/demo-guide.md)
+- [Local PDF analysis MVP](docs/pdf-analysis-mvp.md)
 - [Retrospective](docs/frontend_demo_retrospective.md)

@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
-import * as XLSX from "xlsx";
-import type { CompanyIndustryRecord, CompanyScoreRecord, DataSourceStatus, DataSourceSyncJob, EnvironmentalActionClass, EnvironmentalAspectCategory, EnvironmentalAspectScore, EsgRatingRecord, EvidenceItem, FinancialYearRecord, NetdiskPdfDocumentInput, PdfDocumentRecord, PdfPageBlock, SampleGroup, SourceFieldCatalog, SourceFileRecord, ViolationEvent } from "@/types";
+import type { WorkBook } from "xlsx";
+import type { CompanyIndustryRecord, CompanyScoreRecord, DataSourceStatus, DataSourceSyncJob, EnvironmentalAspectScore, EsgRatingRecord, EvidenceItem, FinancialYearRecord, NetdiskPdfDocumentInput, PdfDocumentRecord, PdfPageBlock, SampleGroup, SourceFieldCatalog, SourceFileRecord, ViolationEvent } from "@/types";
 import { loadSqliteSnapshot, pdfDerivedSummary, persistFullSnapshot, persistPdfState, type SqliteSnapshot } from "./sqlite-store";
-import { alignReportYearToScores, inferPublicationDate, inferReportYear, normalizeCompanyId, normalizeStockCode } from "./identity";
+import { normalizeStockCode } from "./identity";
+import { buildCompanyIdentityCandidates, CURRENT_EVIDENCE_EXTRACTOR_VERSION, extractDocumentEvidence as extractResolvedDocumentEvidence, fallbackCompanyName, resolveDocumentIdentity } from "./evidence-extractor";
 
 const rootEnvName = "GREENLENS_SOURCE_DIR";
 const workbookExtensions = new Set([".xlsx", ".xls"]);
@@ -46,6 +48,12 @@ interface StoredPdfDocument extends PdfDocumentRecord { pages: PdfPageBlock[]; }
 interface RuntimeStore { files: SourceFileRecord[]; catalogs: Map<string, SourceFieldCatalog>; financialRecords: FinancialYearRecord[]; companyScores: CompanyScoreRecord[]; companyIndustries: CompanyIndustryRecord[]; esgRatings: EsgRatingRecord[]; violationEvents: ViolationEvent[]; pdfDocuments: StoredPdfDocument[]; documentEvidence: EvidenceItem[]; environmentalAspects: EnvironmentalAspectScore[]; syncJobs: Map<string, DataSourceSyncJob>; lastSyncedAt?: string; }
 interface PersistedStore { files: SourceFileRecord[]; catalogs: Array<[string, SourceFieldCatalog]>; financialRecords: FinancialYearRecord[]; companyScores?: CompanyScoreRecord[]; companyIndustries?: CompanyIndustryRecord[]; esgRatings?: EsgRatingRecord[]; violationEvents: ViolationEvent[]; pdfDocuments?: StoredPdfDocument[]; documentEvidence?: EvidenceItem[]; environmentalAspects?: EnvironmentalAspectScore[]; lastSyncedAt?: string; }
 const runtime = globalThis as typeof globalThis & { __greenlensNetdiskStore?: RuntimeStore };
+const require = createRequire(import.meta.url);
+type XlsxModule = typeof import("xlsx");
+let xlsxModule: XlsxModule | undefined;
+function xlsx(): XlsxModule {
+  return xlsxModule ??= require("xlsx") as XlsxModule;
+}
 function restoredStore(): RuntimeStore {
   try {
     const saved = loadSqliteSnapshot() as unknown as PersistedStore;
@@ -54,13 +62,27 @@ function restoredStore(): RuntimeStore {
     return { files: [], catalogs: new Map(), financialRecords: [], companyScores: [], companyIndustries: [], esgRatings: [], violationEvents: [], pdfDocuments: [], documentEvidence: [], environmentalAspects: [], syncJobs: new Map() };
   }
 }
-const store: RuntimeStore = runtime.__greenlensNetdiskStore ??= restoredStore();
-store.companyScores ??= [];
-store.companyIndustries ??= [];
-store.esgRatings ??= [];
-store.pdfDocuments ??= [];
-store.documentEvidence ??= [];
-store.environmentalAspects ??= [];
+function activeStore(): RuntimeStore {
+  if (!runtime.__greenlensNetdiskStore) {
+    const restored = restoredStore();
+    restored.companyScores ??= [];
+    restored.companyIndustries ??= [];
+    restored.esgRatings ??= [];
+    restored.pdfDocuments ??= [];
+    restored.documentEvidence ??= [];
+    restored.environmentalAspects ??= [];
+    runtime.__greenlensNetdiskStore = restored;
+  }
+  return runtime.__greenlensNetdiskStore;
+}
+
+// Importing an API route must not deserialize the complete SQLite snapshot.
+// Existing callers keep the same property-based interface and initialize only
+// when a non-Dashboard workflow actually touches the in-memory store.
+const store = new Proxy({} as RuntimeStore, {
+  get: (_target, property) => Reflect.get(activeStore(), property),
+  set: (_target, property, value) => Reflect.set(activeStore(), property, value),
+});
 
 function sourceRoot() {
   const configured = process.env[rootEnvName];
@@ -79,38 +101,23 @@ function split(value: unknown) { return text(value).split(/[;,\uFF1B\uFF0C\u3001
 function classify(relativePath: string): SourceFileRecord["kind"] { const lower = relativePath.toLowerCase(); if (lower.endsWith(".zip")) return "archive"; if (/industry|\u884c\u4e1a/.test(lower)) return "company_industry_workbook"; if (/score|eaa_esi/.test(lower)) return "company_score_workbook"; if (/rating|\u8bc4\u7ea7/.test(lower)) return "esg_rating_workbook"; if (/\u8d22\u52a1|\u8d44\u4ea7|roa|finance|financial/.test(lower)) return "financial_workbook"; if (/\u8fdd\u89c4|\u5904\u7f5a|\u8fdd\u6cd5/.test(lower)) return "violation_workbook"; if (/\u8d1f\u9762|negative/.test(lower)) return "negative_news"; if (/esg|\u73af\u5883|\u53ef\u6301\u7eed/.test(lower)) return "esg_report"; return "unknown"; }
 function knownHeaderCount(row: unknown[]) { return row.filter((value) => { const field = text(value); return field in financeFields || field in violationFields || field in companyScoreFields || field in companyIndustryFields || field in esgRatingFields; }).length; }
 
-const aspectRules: Array<{ category: EnvironmentalAspectCategory; label: string; pattern: RegExp }> = [
-  { category: "emissions_climate", label: "Emissions and climate", pattern: /碳|温室气体|排放|气候|carbon|emission|climate/i },
-  { category: "energy_resources", label: "Energy and resources", pattern: /能源|能耗|电力|用水|资源|energy|water|resource/i },
-  { category: "waste_circularity", label: "Waste and circularity", pattern: /废弃物|固废|回收|循环|垃圾|waste|recycl|circular/i },
-  { category: "pollution_control", label: "Pollution control", pattern: /污染|废水|废气|噪声|治理|pollution|wastewater/i },
-  { category: "biodiversity_ecology", label: "Biodiversity and ecology", pattern: /生态|生物多样性|植被|修复|biodiversity|ecology/i },
-];
-const implementedPattern = /已完成|已投入|已建成|已实施|实现|同比减少|同比降低|completed|implemented|reduced/i;
-const planningPattern = /计划|将于|预计|目标|拟于|未来|plan|target|will|expected/i;
-const planningVerificationPatterns = [/20\d{2}年|20\d{2}[-/.]\d{1,2}/, /\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:吨|万元|千瓦|兆瓦|立方米)/, /通过|采用|建设|改造|采购|实施路径/, /部门|委员会|负责人|责任单位/];
-
-function inferPdfIdentity(input: NetdiskPdfDocumentInput) {
-  const leadText = input.pages.slice(0, 5).map((page) => page.text).join(" ");
-  const stock = normalizeStockCode(`${input.filename} ${leadText}`);
-  const inferredYear = inferReportYear(leadText, input.filename);
-  const companyId = normalizeCompanyId(stock);
-  const scoreYears = companyId ? store.companyScores.filter((item) => item.companyId === companyId).map((item) => item.reportYear) : [];
-  const reportYear = alignReportYearToScores(inferredYear, scoreYears);
-  const base = path.basename(input.filename, path.extname(input.filename)).replace(/[_-]+/g, " ").replace(/(?:19|20)\d{2}.*$/, "").trim();
+function inferPdfIdentity(input: NetdiskPdfDocumentInput, documentId = input.documentId ?? sourceId(`remote-pdf:${input.fsid}:${input.filename}`)) {
+  const resolution = resolveDocumentIdentity({
+    documentId, filename: input.filename, kind: input.kind, textMode: input.textMode, pages: input.pages,
+    stockCode: input.stockCode, companyName: input.companyName, reportYear: input.reportYear,
+  }, buildCompanyIdentityCandidates(store.companyScores));
   return {
-    stockCode: stock ?? undefined,
-    companyId: companyId ?? undefined,
-    companyName: base || undefined,
-    reportYear: reportYear ?? undefined,
-    publicationDate: inferPublicationDate(input.filename) ?? undefined,
+    stockCode: resolution.resolvedStockCode ?? undefined,
+    companyId: resolution.resolvedCompanyId ?? undefined,
+    companyName: resolution.alternativeCandidates[0]?.companyName ?? (fallbackCompanyName(input.filename) || undefined),
+    reportYear: resolution.reportYear ?? undefined,
+    publicationDate: resolution.publicationDate ?? undefined,
+    resolution,
   };
 }
 
-function pageSentences(page: PdfPageBlock) { return page.text.split(/(?<=[。！？!?；;])|\n+/).map((value) => value.trim()).filter((value) => value.length >= 12); }
-
 function extractDocumentEvidence(document: StoredPdfDocument) {
-  const identity = inferPdfIdentity(document);
+  const identity = inferPdfIdentity(document, document.id);
   if (document.kind === "negative_news") {
     const evidence = document.pages.flatMap((page) => {
       const code = page.text.match(/(?<!\d)(\d{6})(?!\d)/)?.[1] ?? identity.stockCode;
@@ -120,31 +127,15 @@ function extractDocumentEvidence(document: StoredPdfDocument) {
     });
     return { evidence, aspects: [] as EnvironmentalAspectScore[] };
   }
-  if (!identity.companyId || !identity.reportYear) return { evidence: [] as EvidenceItem[], aspects: [] as EnvironmentalAspectScore[] };
-  const evidence: EvidenceItem[] = [];
-  const aspectBuckets = new Map<EnvironmentalAspectCategory, { label: string; implemented: number; planning: number; indeterminate: number; evidenceIds: string[] }>();
-  for (const page of document.pages) {
-    for (const sentence of pageSentences(page)) {
-      const rule = aspectRules.find((candidate) => candidate.pattern.test(sentence));
-      if (!rule && document.kind === "esg_report") continue;
-      const actionClass: EnvironmentalActionClass = implementedPattern.test(sentence) ? "implemented" : planningPattern.test(sentence) ? "planning" : "indeterminate";
-      const verifiedPlanning = actionClass !== "planning" || planningVerificationPatterns.every((pattern) => pattern.test(sentence));
-      const id = sourceId(`${document.id}:${page.page}:${sentence}`);
-      evidence.push({ id, companyId: identity.companyId, reportYear: identity.reportYear, type: actionClass === "implemented" ? "action" : "claim", actionClass, title: rule?.label ?? "Environmental statement", excerpt: sentence.slice(0, 500), page: page.page, sourceLabel: document.filename, status: document.textMode === "ocr_required" || !verifiedPlanning ? "insufficient" : "pending" });
-      if (rule) {
-        const bucket = aspectBuckets.get(rule.category) ?? { label: rule.label, implemented: 0, planning: 0, indeterminate: 0, evidenceIds: [] };
-        bucket[actionClass] += 1; bucket.evidenceIds.push(id); aspectBuckets.set(rule.category, bucket);
-      }
-    }
-  }
-  const aspects = [...aspectBuckets.entries()].map(([category, bucket]) => {
-    const total = bucket.implemented + bucket.planning + bucket.indeterminate;
-    const planningAlpha = 0.5;
-    return { id: sourceId(`${document.id}:${category}`), companyId: identity.companyId!, reportYear: identity.reportYear!, aspectText: bucket.label, category, frequency: total, salience: total ? total / Math.max(evidence.length, 1) : 0, implemented: bucket.implemented, planning: bucket.planning, indeterminate: bucket.indeterminate, planningAlpha, actionScore: total ? (bucket.implemented + planningAlpha * bucket.planning) / total : null, evidenceIds: bucket.evidenceIds, calculationStatus: "calculated", formulaVersion: "pdf-actions-v1" } satisfies EnvironmentalAspectScore;
+  if (identity.resolution.status !== "resolved") return { evidence: [] as EvidenceItem[], aspects: [] as EnvironmentalAspectScore[] };
+  return extractResolvedDocumentEvidence({
+    document: { documentId: document.id, filename: document.filename, kind: document.kind, textMode: document.textMode, pages: document.pages, stockCode: document.stockCode, companyName: document.companyName, reportYear: document.reportYear, publicationDate: document.publicationDate },
+    identity: identity.resolution,
+    extractorVersion: CURRENT_EVIDENCE_EXTRACTOR_VERSION,
   });
-  return { evidence, aspects };
 }
-function sheetRows(workbook: XLSX.WorkBook) {
+function sheetRows(workbook: WorkBook) {
+  const XLSX = xlsx();
   return workbook.SheetNames.flatMap((sheetName) => {
     const values = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: null, blankrows: false });
     const headerIndex = values.slice(0, 5).reduce((best, row, index) => knownHeaderCount(row) > knownHeaderCount(values[best] ?? []) ? index : best, 0);
@@ -152,7 +143,8 @@ function sheetRows(workbook: XLSX.WorkBook) {
     return values.slice(headerIndex + 1).map((valueRow) => Object.fromEntries(headers.flatMap((header, index) => header ? [[header, valueRow[index] ?? null]] : [])));
   });
 }
-function catalog(sourceFileId: string, workbook: XLSX.WorkBook): SourceFieldCatalog {
+function catalog(sourceFileId: string, workbook: WorkBook): SourceFieldCatalog {
+  const XLSX = xlsx();
   const fields: SourceFieldCatalog["fields"] = [];
   workbook.SheetNames.forEach((sheetName) => {
     const values = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: null, blankrows: false });
@@ -224,7 +216,8 @@ function mergeFinancial(sourceRows: SheetRow[]): FinancialYearRecord[] {
   });
   return [...records.values()].map((record) => ({ ...record, qualityFlags: [...(record.assetLiabilityRatio == null ? ["ASSET_LIABILITY_RATIO_MISSING"] : []), ...(record.roaA == null ? ["ROA_MISSING"] : []), ...(record.totalAssets == null ? ["TOTAL_ASSETS_MISSING"] : [])] }));
 }
-function scoreSheetRows(workbook: XLSX.WorkBook): SheetRow[] {
+function scoreSheetRows(workbook: WorkBook): SheetRow[] {
+  const XLSX = xlsx();
   const fullSheet = workbook.Sheets["Company-level scoring"] ?? workbook.Sheets["Company_level_scoring"] ?? workbook.Sheets["Company-level"];
   if (fullSheet) {
     const values = XLSX.utils.sheet_to_json<unknown[]>(fullSheet, { header: 1, defval: null, blankrows: false });
@@ -401,7 +394,7 @@ export async function syncLocalNetdisk(pathPrefix?: string): Promise<DataSourceS
   for (const file of files) {
     if (!workbookExtensions.has(path.extname(file.filename).toLowerCase())) continue;
     try {
-      const workbook = XLSX.readFile(path.join(root, file.path.slice(1)), { cellDates: true, raw: true }); const schema = catalog(file.id, workbook); catalogs.set(file.id, schema); file.detectedFields = schema.fields.map((field) => field.sourceField);
+      const workbook = xlsx().readFile(path.join(root, file.path.slice(1)), { cellDates: true, raw: true }); const schema = catalog(file.id, workbook); catalogs.set(file.id, schema); file.detectedFields = schema.fields.map((field) => field.sourceField);
       if (file.kind === "financial_workbook") { if (!hasTargets(schema, ["stockCode", "companyName", "fiscalPeriodEnd"]) || !["F011201A", "F050201B", "A001000000"].some((field) => schema.fields.some((item) => item.sourceField === field))) file.qualityFlags.push("FINANCIAL_REQUIRED_FIELDS_MISSING"); else financialRows.push(...sheetRows(workbook)); }
       if (file.kind === "violation_workbook") { if (!hasTargets(schema, ["stockCode", "announcementDate", "violationTypes"])) file.qualityFlags.push("VIOLATION_REQUIRED_FIELDS_MISSING"); else violations.push(...sheetRows(workbook).flatMap((row, index) => { const event = violationEvent(file, row, index); return event ? [event] : []; })); }
       if (file.kind === "company_score_workbook") { if (!hasScoreTargets(schema, file.filename)) file.qualityFlags.push("SCORE_REQUIRED_FIELDS_MISSING"); else scoreSheetRows(workbook).forEach((row, index) => { const record = companyScoreRecord(file, row, index); if (record) scoreRows.push(record); }); }
@@ -448,7 +441,7 @@ export function ingestNetdiskPdfDocuments(inputs: NetdiskPdfDocumentInput[], app
       ...(!identity.reportYear ? ["REPORT_YEAR_UNRESOLVED"] : []),
     ];
     return {
-      id: sourceId(`remote-pdf:${input.fsid}:${input.filename}`), provider: "baidu_netdisk", fsid: input.fsid,
+      id: input.documentId ?? sourceId(`remote-pdf:${input.fsid}:${input.filename}`), provider: "baidu_netdisk", fsid: input.fsid,
       filename: input.filename, size: input.size, md5: input.md5, kind: input.kind, pageCount: input.pageCount,
       textPageCount: input.textPageCount, textCoverage: input.textCoverage, textMode: input.textMode,
       stockCode: identity.stockCode, companyName: identity.companyName, reportYear: identity.reportYear,

@@ -53,5 +53,5 @@ function getGap(company: CompanyYearRecord, task: DashboardReviewTask, evidence?
   return { tone: "clear", title: "未发现阻断性缺口", detail: "仍需人工确认主体、报告年度和事件相关性。" };
 }
 
-export function metricLabel(code: DashboardReviewTask["metricCode"]) { return code.replace("EAA_ESGSI", "E-AA-ESGSI"); }
+export function metricLabel(code: DashboardReviewTask["metricCode"]) { return code.replace("EAA_ESI", "EAA-ESI"); }
 function decisionLabel(value?: ReviewRecord["humanDecision"]) { return value ? ({ confirm: "已确认信号", reject: "已驳回信号", partial: "部分相关", insufficient: "证据不足" } as const)[value] : "等待明确选择"; }

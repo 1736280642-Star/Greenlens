@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "import:gsi": "node scripts/import-gsi.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -25,6 +26,7 @@
     "lucide-react": "latest",
     "motion": "latest",
     "next": "^16.2.12",
+    "pdfjs-dist": "^5.4.149",
     "react": "latest",
     "react-dom": "latest",
     "three": "latest",

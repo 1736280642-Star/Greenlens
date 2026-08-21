@@ -9,7 +9,7 @@ type DiagnosticMode = "risk" | "evidence" | "review";
 interface RiskInsightsProps { companies: CompanyYearRecord[]; insights: DashboardInsights; selectedFactor: MetricCode | null; onSelectFactor: (factor: MetricCode | null) => void; onSelectIndustry: (industry: string) => void; }
 
 const factorDefs: Array<{ code: MetricCode; label: string }> = [
-  { code: "EASS", label: "EASS 缺口" }, { code: "IR", label: "IR" }, { code: "UPR", label: "UPR" }, { code: "ESGSI", label: "ESGSI" }, { code: "IMBALANCE", label: "ESG 失衡" },
+  { code: "EASS", label: "EASS 缺口" }, { code: "IR", label: "IR" }, { code: "UPR", label: "UPR" }, { code: "ESGSI", label: "ESI" }, { code: "IMBALANCE", label: "ESG 失衡" },
 ];
 const tooltip = { backgroundColor: "rgba(12,17,16,.97)", borderColor: "rgba(255,255,255,.16)", textStyle: { color: "#F4F7F5", fontSize: 16 } };
 
