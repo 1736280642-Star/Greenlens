@@ -1,6 +1,7 @@
 # GreenLens Demo
 
 GreenLens is a desktop-first ESG evidence investigation workspace. Deterministic tests use synthetic data; production-like local runs can also persist and parse a user-uploaded text PDF through the HTTP Repository.
+> 演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。
 
 ### GreenLens 产品介绍
 
@@ -63,7 +64,6 @@ AI 也会主动指出证据覆盖不足、PDF 无法定位、外部事实缺失�
 GreenLens 将企业漂绿风险研究组织成一条连续工作流。研究员先通过风险等级找到值得关注的企业，再用 EAA-ESI、GSI 和 Red Flag 检查信号是否稳定，随后借助 AI 回到原文与外部事实完成核验。
 
 这套工作方式可以缩短前期筛查时间，也让每个风险信号都有解释、有证据，并清楚标明尚未解决的不确定性。
-> 演示数据：企业、事件、报告与指标均为合成内容，不代表任何真实主体。
 
 ## Run locally
 
